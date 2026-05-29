@@ -11,10 +11,10 @@ composeBom = "2026.02.01"
 navigationCompose = "2.9.8"
 mapsCompose="4.3.3"
 playServicesMaps="18.2.0"
-materialIcons = "1.6.7"
+materialIconsExtended = "1.6.7"
 
 [libraries]
-androidx-material-icons = { group = "androidx.compose.material", name = "material-icons", version.ref = "materialIcons" }
+androidx-compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended", version.ref = "materialIconsExtended" }
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref= "navigationCompose"}
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }

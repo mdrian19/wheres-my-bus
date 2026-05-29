@@ -41,7 +41,7 @@ android {
 }
 
 dependencies {
-    implementation(libs.androidx.material.icons)
+    implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.maps.compose)
     implementation(libs.play.services.maps)
     implementation(libs.androidx.navigation.compose)
