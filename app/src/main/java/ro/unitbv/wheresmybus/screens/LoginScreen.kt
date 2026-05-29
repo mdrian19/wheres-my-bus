@@ -65,7 +65,7 @@ fun LoginScreen(navController: NavController) {
             Text("Log in")
         }
         Spacer(modifier = Modifier.height(16.dp))
-        Button(onClick = { navController.navigate(Screen.Login.route) }) {
+        Button(onClick = { navController.navigate(Screen.Register.route) }) {
             Text("Don't have an account? Register")
         }
     }
