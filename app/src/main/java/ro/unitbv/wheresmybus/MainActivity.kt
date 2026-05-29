@@ -11,6 +11,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import ro.unitbv.wheresmybus.models.Screen
+import ro.unitbv.wheresmybus.screens.GuestScreen
+import ro.unitbv.wheresmybus.screens.LoginScreen
+import ro.unitbv.wheresmybus.screens.MainScreen
+import ro.unitbv.wheresmybus.screens.RegisterScreen
 import ro.unitbv.wheresmybus.ui.theme.WheresMyBusTheme
 
 class MainActivity : ComponentActivity() {
@@ -19,13 +27,28 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             WheresMyBusTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
+                AppNavigation()
             }
+        }
+    }
+}
+
+@Composable
+fun AppNavigation(){
+    val navController = rememberNavController()
+
+    NavHost(navController = navController, startDestination = Screen.Guest.route){
+        composable(Screen.Guest.route){
+            GuestScreen(navController = navController)
+        }
+        composable(Screen.Login.route){
+            LoginScreen(navController = navController)
+        }
+        composable(Screen.Register.route){
+            RegisterScreen(navController = navController)
+        }
+        composable(Screen.Main.route) {
+            MainScreen()
         }
     }
 }
