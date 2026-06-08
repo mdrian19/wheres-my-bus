@@ -101,7 +101,7 @@ fun LoginScreen(navController: NavController) {
                 }
             },
             keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Email,
+                keyboardType = KeyboardType.Password,
                 imeAction = ImeAction.Done
             )
         )
