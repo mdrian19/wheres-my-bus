@@ -52,15 +52,18 @@ class MainActivity : ComponentActivity() {
 fun AppNavigation(){
     val context = LocalContext.current
     val userManager = remember { UserManager(context) }
-    val savedEmail by userManager.userEmailFlow.collectAsState(initial = null)
+    val isLoggedInState by userManager.isLoggedInFlow.collectAsState(initial = null)
+    val isLoggedIn = isLoggedInState
+//    val savedEmail by userManager.userEmailFlow.collectAsState(initial = null)
+//    val currentEmail = savedEmail
 
-    if(savedEmail == null){
+    if(isLoggedIn == null){
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center){
             CircularProgressIndicator()
         }
     } else {
         val navController = rememberNavController()
-        val startRoute = if(savedEmail!!.isNotBlank()) Screen.Main.route else Screen.Guest.route
+        val startRoute = if(isLoggedIn) Screen.Main.route else Screen.Guest.route
 
         NavHost(navController = navController, startDestination = startRoute){
             composable(Screen.Guest.route){

@@ -24,6 +24,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,6 +37,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
+import kotlinx.coroutines.launch
 import ro.unitbv.wheresmybus.data.UserManager
 import ro.unitbv.wheresmybus.models.Screen
 
@@ -43,6 +45,7 @@ import ro.unitbv.wheresmybus.models.Screen
 fun LoginScreen(navController: NavController) {
     val context = LocalContext.current
     val userManager = remember { UserManager(context) }
+    val coroutineScope = rememberCoroutineScope()
 
     val savedEmail by userManager.userEmailFlow.collectAsState(initial = "")
     val savedPassword by userManager.userPasswordFlow.collectAsState(initial = "")
@@ -115,8 +118,11 @@ fun LoginScreen(navController: NavController) {
         Button(onClick = {
             if (email.isNotBlank() && password.isNotBlank()) {
                 if (email == savedEmail && password == savedPassword) {
-                    navController.navigate(Screen.Main.route) {
-                        popUpTo(Screen.Login.route) { inclusive = true }
+                    coroutineScope.launch {
+                        userManager.setLoggedIn(true)
+                        navController.navigate(Screen.Main.route) {
+                            popUpTo(Screen.Login.route) { inclusive = true }
+                        }
                     }
                 } else {
                     errMsg = "Incorrect email or password!"

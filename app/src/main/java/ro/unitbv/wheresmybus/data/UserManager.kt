@@ -3,6 +3,7 @@ package ro.unitbv.wheresmybus.data
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -18,6 +19,15 @@ class UserManager(private val context: Context) {
         val USER_PASSWORD = stringPreferencesKey("user_password")
         val USER_NAME = stringPreferencesKey("user_name")
         val USER_CITY = stringPreferencesKey("user_city")
+        val IS_LOGGED_IN = booleanPreferencesKey("is_logged_in")
+    }
+
+    val isLoggedInFlow: Flow<Boolean?> = context.dataStore.data.map{ it[IS_LOGGED_IN] ?: false }
+
+    suspend fun setLoggedIn (loggedIn: Boolean) {
+        context.dataStore.edit{ prefs ->
+            prefs[IS_LOGGED_IN] = loggedIn
+        }
     }
 
     suspend fun saveUserData(email: String, passwd: String, name: String, city: String){
@@ -29,6 +39,7 @@ class UserManager(private val context: Context) {
         }
     }
 
-    val userEmailFlow: Flow<String?> = context.dataStore.data.map{ it[USER_EMAIL] }
-    val userPasswordFlow: Flow<String?> = context.dataStore.data.map{ it[USER_PASSWORD] }
+    val userEmailFlow: Flow<String?> = context.dataStore.data.map{ it[USER_EMAIL] ?: "" }
+    val userPasswordFlow: Flow<String?> = context.dataStore.data.map{ it[USER_PASSWORD] ?: "" }
+
 }
