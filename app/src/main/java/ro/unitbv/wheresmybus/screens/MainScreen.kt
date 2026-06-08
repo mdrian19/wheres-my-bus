@@ -45,6 +45,10 @@ import kotlinx.coroutines.launch
 import ro.unitbv.wheresmybus.data.UserManager
 import ro.unitbv.wheresmybus.models.Screen
 import androidx.compose.ui.graphics.Color
+import android.util.Log
+import androidx.compose.runtime.LaunchedEffect
+import com.google.firebase.Firebase
+import com.google.firebase.firestore.firestore
 
 
 data class BusStop(
@@ -67,30 +71,31 @@ fun MainScreen(navController: NavController) {
 
     var searchQuery by remember { mutableStateOf("")}
 
-    val allStops = remember{
-        listOf(
-            BusStop("Livada Poștei", LatLng(45.647185, 25.589823), "Cap de linie - Centru", "36"),
-            BusStop("Dramatic", LatLng(45.645163, 25.594770), "Teatrul Sică Alexandrescu", "36"),
-            BusStop("Castanilor", LatLng(45.648215, 25.602143), "Bulevardul 15 Noiembrie", "36"),
-            BusStop("Onix", LatLng(45.651755, 25.603300), "Bulevardul Griviței", "36"),
-            BusStop("Mircea cel Bătrân", LatLng(45.655866, 25.607415), "Bulevardul Griviței", "36"),
-            BusStop("Făget", LatLng(45.658252, 25.610534), "Griviței - Intersecție 13 Decembrie", "36"),
-            BusStop("Spital Tractorul", LatLng(45.662058, 25.612268), "Strada 13 Decembrie", "36"),
-            BusStop("Piața Tractorul", LatLng(45.666115, 25.611151), "Piața Agroalimentară", "36"),
-            BusStop("Bronzului", LatLng(45.670550, 25.612800), "Cartier Tractorul Nou", "36"),
-            BusStop("Ioan Socec", LatLng(45.671800, 25.611000), "Intersecție Socec / 1 Decembrie", "36"),
-            BusStop("Ștefan Baciu", LatLng(45.673100, 25.609500), "Extindere Cartier Tractorul", "36"),
-            BusStop("Alexandru Ciurcu", LatLng(45.673900, 25.607200), "Extindere Cartier Tractorul", "36"),
-            BusStop("Argintului", LatLng(45.672000, 25.604500), "Strada Argintului", "36"),
-            BusStop("Independenței", LatLng(45.669520, 25.605230), "Cap de linie - Cartier Tractorul", "36"),
+    var busStops by remember { mutableStateOf<List<BusStop>>(emptyList())}
 
-            BusStop("Gara Brașov", LatLng(45.6624, 25.6133), "Cap de linie - Gară", "4"),
-            BusStop("Piața Sfatului", LatLng(45.6427, 25.5887), "Centrul istoric", "4"),
-            BusStop("Pe Tocile", LatLng(45.6342, 25.5811), "Cartier Șchei", "4")
-        )
+    LaunchedEffect(Unit){
+        val db = Firebase.firestore
+        db.collection("bus_stops")
+            .get()
+            .addOnSuccessListener{ result ->
+                val fetchedStops = mutableListOf<BusStop>()
+                for(document in result) {
+                    val name = document.getString("name") ?: ""
+                    val lat = document.getDouble("lat") ?: 0.0
+                    val lng = document.getDouble("lng") ?: 0.0
+                    val snippet = document.getString("snippet") ?: ""
+                    val line = document.getString("line") ?: ""
+
+                    fetchedStops.add(BusStop(name, LatLng(lat, lng), snippet, line))
+                }
+                busStops = fetchedStops
+            }
+            .addOnFailureListener { exception ->
+                Log.e("FirebaseError", "Error on stop read", exception)
+            }
     }
 
-    val filteredStops = allStops.filter{ stop ->
+    val filteredStops = busStops.filter{ stop ->
         searchQuery.isBlank() || stop.line.contains(searchQuery, ignoreCase = true)
     }
 
@@ -134,7 +139,7 @@ fun MainScreen(navController: NavController) {
                 filteredStops.forEach{stop ->
                     Marker(
                         state = MarkerState(position = stop.location),
-                        title = stop.name,
+                        title = "${stop.name} (Line ${stop.line})",
                         snippet = stop.snippet
                     )
                 }
