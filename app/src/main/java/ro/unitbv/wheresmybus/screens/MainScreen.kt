@@ -15,7 +15,7 @@ import androidx.navigation.NavController
 import ro.unitbv.wheresmybus.models.Screen
 
 @Composable
-fun MainScreen() {
+fun MainScreen(navController: NavController) {
     Column(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
