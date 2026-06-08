@@ -31,7 +31,11 @@ import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Password
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
+import kotlinx.coroutines.launch
+import ro.unitbv.wheresmybus.data.UserManager
 
 @Composable
 fun RegisterScreen(
@@ -51,6 +55,10 @@ fun RegisterScreen(
     var name by remember { mutableStateOf("") }
     var surname by remember { mutableStateOf("") }
     var city by remember { mutableStateOf("") }
+
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val userManager = remember { UserManager(context) }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -125,7 +133,21 @@ fun RegisterScreen(
         )
         Spacer(modifier = Modifier.height(24.dp))
         Button(
-            onClick = { navController.popBackStack() },
+            onClick = {
+                if(email.isNotBlank() && password.isNotBlank() && password == passwordConf){
+                    coroutineScope.launch{
+                        userManager.saveUserData(
+                            email = email,
+                            passwd = password,
+                            name = "$name $surname",
+                            city = city
+                        )
+                        navController.popBackStack()
+                    }
+                } else {
+                    emailErr = "Please check the field data and add the missing details!"
+                }
+            },
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Register")
