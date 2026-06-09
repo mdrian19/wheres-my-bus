@@ -4,9 +4,14 @@ import android.graphics.Camera
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
@@ -34,10 +39,13 @@ fun GuestScreen(navController: NavController) {
         position = CameraPosition.fromLatLngZoom(brasov, 13f)
     }
 
+    val navBarPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
     Box(modifier = Modifier.fillMaxSize()) {
         GoogleMap(
             modifier = Modifier.fillMaxSize(),
-            cameraPositionState = cameraPositionState
+            cameraPositionState = cameraPositionState,
+            contentPadding = PaddingValues(bottom = navBarPadding + 80.dp)
         ) {
             Marker(
                 state = MarkerState(position = LatLng(45.650000, 25.600000)),
@@ -56,9 +64,10 @@ fun GuestScreen(navController: NavController) {
             },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
                 .padding(bottom = 32.dp)
         ) {
-            Text("Intra in cont pentru acces complet")
+            Text("Sign in for complete access")
         }
     }
 }

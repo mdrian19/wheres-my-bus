@@ -46,7 +46,10 @@ import ro.unitbv.wheresmybus.data.UserManager
 import ro.unitbv.wheresmybus.models.Screen
 import androidx.compose.ui.graphics.Color
 import android.util.Log
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import com.google.firebase.Firebase
 import com.google.firebase.firestore.firestore
 
@@ -102,7 +105,7 @@ fun MainScreen(navController: NavController) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Where's My Bus?") },
+                title = { Text("Stops Map") },
                 actions = {
                     IconButton(
                         onClick = {
@@ -162,7 +165,11 @@ fun MainScreen(navController: NavController) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp)
-                    .align(Alignment.TopCenter)
+                    .align(Alignment.TopCenter),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Text,
+                    imeAction = ImeAction.Go
+                )
             )
         }
     }

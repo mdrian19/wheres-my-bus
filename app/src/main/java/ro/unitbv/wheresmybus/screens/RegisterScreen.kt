@@ -1,7 +1,11 @@
 package ro.unitbv.wheresmybus.screens
 
+import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,13 +36,23 @@ import androidx.compose.material.icons.filled.Password
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
+import com.google.firebase.Firebase
+import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.auth.auth
+import com.google.firebase.firestore.firestore
 import kotlinx.coroutines.launch
 import ro.unitbv.wheresmybus.data.UserManager
+import ro.unitbv.wheresmybus.R
 
 @Composable
 fun RegisterScreen(
@@ -62,6 +76,56 @@ fun RegisterScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val userManager = remember { UserManager(context) }
+
+    val token = stringResource(R.string.default_web_client_id)
+    val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+        .requestIdToken(token)
+        .requestEmail()
+        .build()
+    val googleSignInClient = GoogleSignIn.getClient(context, gso)
+
+    val launcher =
+        rememberLauncherForActivityResult(contract = ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == Activity.RESULT_OK) {
+                val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+                try {
+                    val account = task.getResult(ApiException::class.java)
+                    val idToken = account.idToken
+                    if (idToken != null) {
+                        val credential = GoogleAuthProvider.getCredential(idToken, null)
+                        Firebase.auth.signInWithCredential(credential)
+                            .addOnCompleteListener { authTask ->
+                                if (authTask.isSuccessful) {
+                                    val user = Firebase.auth.currentUser
+                                    val isNewUser =
+                                        authTask.result?.additionalUserInfo?.isNewUser == true
+
+                                    if (isNewUser && user != null) {
+                                        val userData = hashMapOf(
+                                            "name" to (user.displayName ?: "Google user"),
+                                            "email" to (user.email ?: ""),
+                                            "city" to "Unknown"
+                                        )
+                                        Firebase.firestore.collection("users").document(user.uid).set(userData)
+                                    }
+
+                                    coroutineScope.launch{
+                                        userManager.setLoggedIn(true)
+                                        navController.navigate(Screen.Main.route){
+                                            popUpTo(Screen.Guest.route) { inclusive = true }
+                                        }
+                                    }
+                                } else {
+                                    emailErr = "Error on creating account with Google"
+                                }
+                            }
+                    }
+                } catch (e: ApiException) {
+                    emailErr = "Log in with Google has been canceled"
+                }
+            }
+        }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -71,27 +135,26 @@ fun RegisterScreen(
     ) {
         Text(text = "Create a new account", style = MaterialTheme.typography.headlineMedium)
         Spacer(modifier = Modifier.height(24.dp))
-        OutlinedTextField(
-            value = name,
-            onValueChange = { name = it },
-            label = { Text("Name") },
-            modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Text,
-                imeAction = ImeAction.Next
+
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it; emailErr = null },
+                label = { Text("Name") },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
             )
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        OutlinedTextField(
-            value = surname,
-            onValueChange = { surname = it },
-            label = { Text("Surname") },
-            modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Text,
-                imeAction = ImeAction.Next
+            OutlinedTextField(
+                value = surname,
+                onValueChange = { surname = it; emailErr = null },
+                label = { Text("Surname") },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
             )
-        )
+        }
+
         Spacer(modifier = Modifier.height(8.dp))
         OutlinedTextField(
             value = city,
@@ -170,19 +233,33 @@ fun RegisterScreen(
                 imeAction = ImeAction.Next
             )
         )
+
+        if(emailErr != null){
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(text = emailErr!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+        }
+
         Spacer(modifier = Modifier.height(24.dp))
         Button(
             onClick = {
-                if (email.isNotBlank() && password.isNotBlank() && password == passwordConf) {
-                    coroutineScope.launch {
-                        userManager.saveUserData(
-                            email = email,
-                            passwd = password,
-                            name = "$name $surname",
-                            city = city
-                        )
-                        navController.popBackStack()
-                    }
+                if (email.isNotBlank() && password.isNotBlank() && password == passwordConf && name.isNotBlank() && city.isNotBlank()) {
+                    Firebase.auth.createUserWithEmailAndPassword(email, password)
+                        .addOnCompleteListener{ task ->
+                            if(task.isSuccessful) {
+                                val userId = Firebase.auth.currentUser?.uid ?: ""
+                                val userData = hashMapOf(
+                                    "name" to "$name $surname",
+                                    "city" to city,
+                                    "email" to email
+                                )
+                                Firebase.firestore.collection("users").document(userId).set(userData)
+                                    .addOnSuccessListener{
+                                        navController.popBackStack()
+                                    }
+                            } else {
+                                emailErr = task.exception?.localizedMessage ?: "Error on creating account"
+                            }
+                        }
                 } else {
                     emailErr = "Please check the field data and add the missing details!"
                 }
@@ -190,6 +267,18 @@ fun RegisterScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Register")
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(text = "OR")
+        Spacer(modifier = Modifier.height(16.dp))
+        OutlinedButton(
+            onClick = {
+                val signInIntent = googleSignInClient.signInIntent
+                launcher.launch(signInIntent)
+            },
+            modifier = Modifier.fillMaxWidth()
+        ){
+            Text("Register with Google")
         }
         Spacer(modifier = Modifier.height(16.dp))
         Button(onClick = { navController.popBackStack() }) {
