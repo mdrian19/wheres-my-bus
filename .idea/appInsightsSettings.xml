@@ -8,10 +8,10 @@
             <InsightsFilterSettings>
               <option name="connection">
                 <ConnectionSetting>
-                  <option name="appId" value="PLACEHOLDER" />
-                  <option name="mobileSdkAppId" value="" />
-                  <option name="projectId" value="" />
-                  <option name="projectNumber" value="" />
+                  <option name="appId" value="ro.unitbv.wheresmybus" />
+                  <option name="mobileSdkAppId" value="1:1022727269281:android:06012e92f1d4249d7079e0" />
+                  <option name="projectId" value="wheresmybus2" />
+                  <option name="projectNumber" value="1022727269281" />
                 </ConnectionSetting>
               </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />

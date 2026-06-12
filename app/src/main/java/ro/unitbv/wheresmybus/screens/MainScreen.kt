@@ -61,6 +61,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.firestore
 
 
@@ -127,6 +128,16 @@ fun MainScreen(navController: NavController) {
             TopAppBar(
                 title = { Text("Stops Map") },
                 actions = {
+                    IconButton(
+                        onClick = {
+                            navController.navigate(Screen.Favorites.route)
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = "Favorites"
+                        )
+                    }
                     IconButton(
                         onClick = {
                             coroutineScope.launch {
@@ -227,9 +238,15 @@ fun MainScreen(navController: NavController) {
                                 if(currentUser != null){
                                     val userRef = db.collection("users").document(currentUser.uid)
                                     if(isFavorite){
-                                        userRef.update("favorites", FieldValue.arrayRemove(stop))
+                                        userRef.set(
+                                            hashMapOf("favorites" to FieldValue.arrayRemove(stop.name)),
+                                            SetOptions.merge()
+                                        )
                                     } else {
-                                        userRef.update("favorites", FieldValue.arrayUnion(stop.name))
+                                        userRef.set(
+                                            hashMapOf("favorites" to FieldValue.arrayUnion(stop.name)),
+                                            SetOptions.merge()
+                                        )
                                     }
                                 }
                             }

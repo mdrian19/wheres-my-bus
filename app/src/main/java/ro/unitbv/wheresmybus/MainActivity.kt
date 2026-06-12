@@ -30,6 +30,7 @@ import ro.unitbv.wheresmybus.ui.theme.WheresMyBusTheme
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import ro.unitbv.wheresmybus.screens.FavoritesScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -77,6 +78,9 @@ fun AppNavigation(){
             }
             composable(Screen.Main.route) {
                 MainScreen(navController = navController)
+            }
+            composable(Screen.Favorites.route) {
+                FavoritesScreen(navController = navController)
             }
         }
     }
