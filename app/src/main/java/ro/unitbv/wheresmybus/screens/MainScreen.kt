@@ -32,7 +32,6 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.firestore
-
 import com.google.maps.android.clustering.ClusterItem
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.clustering.Clustering
@@ -44,6 +43,12 @@ import org.json.JSONObject
 import ro.unitbv.wheresmybus.data.UserManager
 import ro.unitbv.wheresmybus.models.Screen
 import androidx.compose.runtime.Immutable
+import com.google.maps.android.clustering.Cluster
+import com.google.maps.android.clustering.ClusterManager
+import com.google.maps.android.clustering.algo.NonHierarchicalDistanceBasedAlgorithm
+import com.google.maps.android.clustering.algo.PreCachingAlgorithmDecorator
+import com.google.maps.android.clustering.view.DefaultClusterRenderer
+import com.google.maps.android.compose.MapEffect
 
 @Immutable
 data class BusStop(
@@ -57,10 +62,23 @@ data class BusStop(
     val wheelchairAccess: String,
     val operator: String
 ) : ClusterItem {
+    private val snippetText = "Lines: ${lines.joinToString(", ")}"
     override fun getPosition(): LatLng = location
     override fun getTitle(): String = name
-    override fun getSnippet(): String = "Lines: ${lines.joinToString(", ")}"
+    override fun getSnippet(): String = snippetText
     override fun getZIndex(): Float? = null
+
+    override fun equals(other: Any?): Boolean{
+        if(this === other)
+            return true
+        if(other !is BusStop)
+            return false
+        return id == other.id
+    }
+
+    override fun hashCode(): Int{
+        return id.hashCode()
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -92,7 +110,7 @@ fun MainScreen(navController: NavController) {
                         Log.d("FirebaseInit", "Database is empty. Starting seeding...")
                         val newStops = seedDatabaseFromJson(context, "stops.json")
                         withContext(Dispatchers.Main) {
-                            busStops = newStops
+                            busStops = newStops.toList()
                         }
                     } else {
                         val fetchedStops = mutableListOf<BusStop>()
@@ -116,7 +134,7 @@ fun MainScreen(navController: NavController) {
                             )
                         }
                         withContext(Dispatchers.Main) {
-                            busStops = fetchedStops
+                            busStops = fetchedStops.toList()
                             Log.d("Performance", "Finished rendering ${fetchedStops.size} stops.")
                         }
                     }
@@ -137,10 +155,27 @@ fun MainScreen(navController: NavController) {
         }
     }
 
-    val filteredStops = remember(searchQuery, busStops) {
-        busStops.filter { stop ->
-            searchQuery.isBlank() || stop.lines.any { it.contains(searchQuery, ignoreCase = true) }
+    val filteredStops by remember{
+        derivedStateOf {
+            if (searchQuery.isBlank()) {
+                busStops
+            } else {
+                busStops.filter { stop ->
+                    stop.lines.any { it.contains(searchQuery, ignoreCase = true) }
+                }
+            }
         }
+    }
+
+    val onClusterItemClick: (BusStop) -> Boolean = remember{
+        { stop ->
+            selectedStop = stop
+            false
+        }
+    }
+
+    val onClusterClick: (Cluster<BusStop>) -> Boolean = remember {
+        { false }
     }
 
     Scaffold(
@@ -173,20 +208,45 @@ fun MainScreen(navController: NavController) {
         }
     ) { paddingValues ->
         Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+            var clusterManager by remember { mutableStateOf<ClusterManager<BusStop>?>(null) }
+
             GoogleMap(
                 modifier = Modifier.fillMaxSize(),
                 cameraPositionState = cameraPositionState,
-                contentPadding = PaddingValues(bottom = if (selectedStop != null) 140.dp else 16.dp),
-                onMapClick = { selectedStop = null }
+                contentPadding = PaddingValues(bottom = if (selectedStop != null) 140.dp else 16.dp)
             ) {
-                Clustering(
-                    items = filteredStops,
-                    onClusterItemClick = { stop ->
-                        selectedStop = stop
-                        false
-                    },
-                    onClusterClick = { false }
-                )
+                MapEffect(Unit){ map ->
+                    if(clusterManager == null){
+                        val manager = ClusterManager<BusStop>(context, map)
+                        val algorithm = NonHierarchicalDistanceBasedAlgorithm<BusStop>()
+                        manager.algorithm = PreCachingAlgorithmDecorator(algorithm)
+                        val renderer = DefaultClusterRenderer<BusStop>(context, map, manager)
+                        renderer.minClusterSize = 4
+                        renderer.setAnimation(false)
+                        manager.renderer = renderer
+                        manager.setOnClusterItemClickListener { stop ->
+                            selectedStop = stop
+                            false
+                        }
+                        manager.setOnClusterClickListener{
+                            false
+                        }
+                        map.setOnMapClickListener{
+                            selectedStop = null
+                        }
+                        map.setOnCameraIdleListener(manager)
+                        map.setOnMarkerClickListener(manager)
+                        clusterManager = manager
+                    }
+                }
+
+                LaunchedEffect(filteredStops, clusterManager){
+                    clusterManager?.let { manager ->
+                        manager.clearItems()
+                        manager.addItems(filteredStops)
+                        manager.cluster()
+                    }
+                }
             }
             OutlinedTextField(
                 value = searchQuery,
