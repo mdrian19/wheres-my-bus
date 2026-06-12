@@ -1,6 +1,7 @@
 package ro.unitbv.wheresmybus.screens
 
 import android.R.attr.bottom
+import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,6 +48,7 @@ import ro.unitbv.wheresmybus.data.UserManager
 import ro.unitbv.wheresmybus.models.Screen
 import androidx.compose.ui.graphics.Color
 import android.util.Log
+import android.widget.Toast
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.text.KeyboardOptions
@@ -61,9 +63,15 @@ import androidx.compose.ui.text.input.KeyboardType
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.firestore
-
+import org.json.JSONObject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import com.google.maps.android.clustering.ClusterItem
+import com.google.maps.android.compose.clustering.Clustering
 
 data class BusStop(
     val id: Long,
@@ -75,7 +83,12 @@ data class BusStop(
     val hasRealTimeBoard: Boolean,
     val wheelchairAccess: String,
     val operator: String
-)
+) : ClusterItem {
+    override fun getPosition(): LatLng = location
+    override fun getTitle(): String = name
+    override fun getSnippet(): String = "Lines: ${lines.joinToString(", ")}"
+    override fun getZIndex(): Float? = null
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -102,47 +115,64 @@ fun MainScreen(navController: NavController) {
         db.collection("bus_stops")
             .get()
             .addOnSuccessListener { result ->
-                val fetchedStops = mutableListOf<BusStop>()
-                for (document in result) {
-                    val id = document.getLong("id") ?: 0L
-                    val name = document.getString("name") ?: "Unknown"
-                    val lat = document.getDouble("lat") ?: 0.0
-                    val lng = document.getDouble("lng") ?: 0.0
-                    val lines = document.get("lines") as? List<String> ?: emptyList()
-                    val hasBench = document.getBoolean("hasBench") ?: false
-                    val hasShelter = document.getBoolean("hasShelter") ?: false
-                    val hasRealTimeBoard = document.getBoolean("hasRealTimeBoard") ?: false
-                    val wheelchairAccess = document.getString("wheelchairAccess") ?: "unknown"
-                    val operator = document.getString("operator") ?: "RAT Brașov"
-                    fetchedStops.add(
-                        BusStop(
-                            id = id,
-                            name = name,
-                            location = LatLng(lat, lng),
-                            lines = lines,
-                            hasBench = hasBench,
-                            hasShelter = hasShelter,
-                            hasRealTimeBoard = hasRealTimeBoard,
-                            wheelchairAccess = wheelchairAccess,
-                            operator = operator
-                        )
-                    )
+                launch(Dispatchers.IO) {
+                    if(result.isEmpty){
+                        Log.d("FirebaseInit", "Database is empty. Starting seeding...")
+                        seedDatabaseFromJson(context, "stops.json")
+                    } else {
+                        val fetchedStops = mutableListOf<BusStop>()
+                        for (document in result) {
+                            val id = document.getLong("id") ?: 0L
+                            val name = document.getString("name") ?: "Unknown"
+                            val lat = document.getDouble("lat") ?: 0.0
+                            val lng = document.getDouble("lng") ?: 0.0
+                            val lines = document.get("lines") as? List<String> ?: emptyList()
+                            val hasBench = document.getBoolean("hasBench") ?: false
+                            val hasShelter = document.getBoolean("hasShelter") ?: false
+                            val hasRealTimeBoard = document.getBoolean("hasRealTimeBoard") ?: false
+                            val wheelchairAccess = document.getString("wheelchairAccess") ?: "unknown"
+                            val operator = document.getString("operator") ?: "RAT Brașov"
+                            fetchedStops.add(
+                                BusStop(
+                                    id = id,
+                                    name = name,
+                                    location = LatLng(lat, lng),
+                                    lines = lines,
+                                    hasBench = hasBench,
+                                    hasShelter = hasShelter,
+                                    hasRealTimeBoard = hasRealTimeBoard,
+                                    wheelchairAccess = wheelchairAccess,
+                                    operator = operator
+                                )
+                            )
+                        }
+
+                        withContext(Dispatchers.Main) {
+                            busStops = fetchedStops
+                            Log.d("Performance", "Finished rendering ${fetchedStops.size} stops.")
+                        }
+                    }
                 }
-                busStops = fetchedStops
+            }
+            .addOnFailureListener { error ->
+                Log.e("Firebase", "Error at rendering stops: ", error)
             }
         if (currentUser != null) {
             db.collection("users").document(currentUser.uid)
                 .addSnapshotListener { snapshot, _ ->
                     if (snapshot != null && snapshot.exists()) {
-                        val favorites = snapshot.get("favorites") as? List<String> ?: emptyList()
+                        val favorites =
+                            snapshot.get("favorites") as? List<String> ?: emptyList()
                         favoriteStops = favorites
                     }
                 }
         }
     }
 
-    val filteredStops = busStops.filter { stop ->
-        searchQuery.isBlank() || stop.lines.any{ it.contains(searchQuery, ignoreCase = true) }
+    val filteredStops = remember(searchQuery, busStops) {
+        busStops.filter { stop ->
+            searchQuery.isBlank() || stop.lines.any { it.contains(searchQuery, ignoreCase = true) }
+        }
     }
 
     Scaffold(
@@ -195,16 +225,16 @@ fun MainScreen(navController: NavController) {
                 contentPadding = PaddingValues(bottom = if (selectedStop != null) 140.dp else 16.dp),
                 onMapClick = { selectedStop = null }
             ) {
-                filteredStops.forEach { stop ->
-                    Marker(
-                        state = MarkerState(position = stop.location),
-                        title = "${stop.name} (Lines ${stop.lines.joinToString(", ")})",
-                        onClick = {
-                            selectedStop = stop
-                            false
-                        }
-                    )
-                }
+                Clustering(
+                    items = filteredStops,
+                    onClusterItemClick = { stop ->
+                        selectedStop = stop
+                        false
+                    },
+                    onClusterClick = {
+                        false
+                    }
+                )
             }
             OutlinedTextField(
                 value = searchQuery,
@@ -257,11 +287,11 @@ fun MainScreen(navController: NavController) {
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             val extraInfo = mutableListOf<String>()
-                            if(stop.hasBench)
+                            if (stop.hasBench)
                                 extraInfo.add("Bench")
-                            if(stop.hasShelter)
+                            if (stop.hasShelter)
                                 extraInfo.add("Shelter")
-                            if(extraInfo.isNotEmpty()){
+                            if (extraInfo.isNotEmpty()) {
                                 Text(
                                     text = extraInfo.joinToString(" - "),
                                     style = MaterialTheme.typography.bodySmall,
@@ -273,7 +303,8 @@ fun MainScreen(navController: NavController) {
                         IconButton(
                             onClick = {
                                 if (currentUser != null) {
-                                    val userRef = db.collection("users").document(currentUser.uid)
+                                    val userRef =
+                                        db.collection("users").document(currentUser.uid)
                                     if (isFavorite) {
                                         userRef.set(
                                             hashMapOf("favorites" to FieldValue.arrayRemove(stop.name)),
@@ -297,11 +328,66 @@ fun MainScreen(navController: NavController) {
                         }
 
                         IconButton(onClick = { selectedStop = null }) {
-                            Icon(imageVector = Icons.Default.Close, contentDescription = "Close")
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close"
+                            )
                         }
                     }
                 }
             }
         }
+    }
+}
+
+suspend fun seedDatabaseFromJson(context: Context, filename: String) = withContext(Dispatchers.IO) {
+    val db = FirebaseFirestore.getInstance()
+
+    try {
+        val jsonString = context.assets.open(filename).bufferedReader().use { it.readText() }
+        val rootObject = JSONObject(jsonString)
+        val busStopsArray = rootObject.getJSONArray("bus_stops")
+        var stopsAdded = 0
+        for (i in 0 until busStopsArray.length()) {
+            val busStop = busStopsArray.getJSONObject(i)
+            if (busStop.optString("type") == "node") {
+                val tags = busStop.optJSONObject("tags")
+                if (tags != null && (tags.optString("highway") == "bus_stop" || tags.optString("public_transport") == "platform")) {
+                    val stopId = busStop.getLong("id")
+                    val linesString = tags.optString("lines", "")
+                    val linesList = if (linesString.isNotBlank()) {
+                        linesString.split(",").map { it.trim() }
+                    } else {
+                        emptyList()
+                    }
+                    val stopData = hashMapOf(
+                        "id" to stopId,
+                        "name" to tags.optString("name", "Unknown stop"),
+                        "lat" to busStop.getDouble("lat"),
+                        "lng" to busStop.getDouble("lon"),
+                        "lines" to linesList,
+                        "hasBench" to (tags.optString("bench") == "yes"),
+                        "hasShelter" to (tags.optString("shelter") == "yes"),
+                        "hasRealTimeBoard" to (tags.optString("departures_board") == "realtime"),
+                        "wheelchairAccess" to tags.optString("wheelchair", "Unknown"),
+                        "operator" to tags.optString("operator", "RAT Brasov")
+                    )
+
+                    db.collection("bus_stops").document(stopId.toString()).set(stopData)
+                    stopsAdded++
+                }
+            }
+        }
+        withContext(Dispatchers.Main) {
+            Toast.makeText(
+                context,
+                "Seeding successful! $stopsAdded stops added.",
+                Toast.LENGTH_LONG
+            )
+                .show()
+        }
+        Log.d("Seeding", "$stopsAdded stops added to Firebase.")
+    } catch (exception: Exception) {
+        Log.e("Seeding error", "Error on JSON read: ${exception.message}", exception)
     }
 }

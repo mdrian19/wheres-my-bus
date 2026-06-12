@@ -43,12 +43,12 @@ android {
 }
 
 dependencies {
+    implementation(libs.maps.compose.utils)
     implementation(libs.firebase.auth)
     implementation(libs.play.services.auth)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.firebase.firestore)
-    implementation(libs.maps.compose)
     implementation(libs.play.services.maps)
     implementation(libs.androidx.navigation.compose)
     implementation(platform(libs.androidx.compose.bom))

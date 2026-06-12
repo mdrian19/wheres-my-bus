@@ -6,7 +6,7 @@
     "timestamp_areas_base": "2026-05-12T07:36:16Z",
     "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
   },
-  "elements": [
+  "bus_stops": [
 
 {
   "type": "node",
