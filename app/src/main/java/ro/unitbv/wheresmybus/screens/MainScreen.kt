@@ -66,10 +66,15 @@ import com.google.firebase.firestore.firestore
 
 
 data class BusStop(
+    val id: Long,
     val name: String,
     val location: LatLng,
-    val snippet: String,
-    val line: String
+    val lines: List<String> = emptyList(),
+    val hasBench: Boolean,
+    val hasShelter: Boolean,
+    val hasRealTimeBoard: Boolean,
+    val wheelchairAccess: String,
+    val operator: String
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -99,12 +104,29 @@ fun MainScreen(navController: NavController) {
             .addOnSuccessListener { result ->
                 val fetchedStops = mutableListOf<BusStop>()
                 for (document in result) {
-                    val name = document.getString("name") ?: ""
+                    val id = document.getLong("id") ?: 0L
+                    val name = document.getString("name") ?: "Unknown"
                     val lat = document.getDouble("lat") ?: 0.0
                     val lng = document.getDouble("lng") ?: 0.0
-                    val snippet = document.getString("snippet") ?: ""
-                    val line = document.getString("line") ?: ""
-                    fetchedStops.add(BusStop(name, LatLng(lat, lng), snippet, line))
+                    val lines = document.get("lines") as? List<String> ?: emptyList()
+                    val hasBench = document.getBoolean("hasBench") ?: false
+                    val hasShelter = document.getBoolean("hasShelter") ?: false
+                    val hasRealTimeBoard = document.getBoolean("hasRealTimeBoard") ?: false
+                    val wheelchairAccess = document.getString("wheelchairAccess") ?: "unknown"
+                    val operator = document.getString("operator") ?: "RAT Brașov"
+                    fetchedStops.add(
+                        BusStop(
+                            id = id,
+                            name = name,
+                            location = LatLng(lat, lng),
+                            lines = lines,
+                            hasBench = hasBench,
+                            hasShelter = hasShelter,
+                            hasRealTimeBoard = hasRealTimeBoard,
+                            wheelchairAccess = wheelchairAccess,
+                            operator = operator
+                        )
+                    )
                 }
                 busStops = fetchedStops
             }
@@ -112,7 +134,7 @@ fun MainScreen(navController: NavController) {
             db.collection("users").document(currentUser.uid)
                 .addSnapshotListener { snapshot, _ ->
                     if (snapshot != null && snapshot.exists()) {
-                        val favorites = snapshot.get("favourites") as? List<String> ?: emptyList()
+                        val favorites = snapshot.get("favorites") as? List<String> ?: emptyList()
                         favoriteStops = favorites
                     }
                 }
@@ -120,7 +142,7 @@ fun MainScreen(navController: NavController) {
     }
 
     val filteredStops = busStops.filter { stop ->
-        searchQuery.isBlank() || stop.line.contains(searchQuery, ignoreCase = true)
+        searchQuery.isBlank() || stop.lines.any{ it.contains(searchQuery, ignoreCase = true) }
     }
 
     Scaffold(
@@ -170,13 +192,13 @@ fun MainScreen(navController: NavController) {
             GoogleMap(
                 modifier = Modifier.fillMaxSize(),
                 cameraPositionState = cameraPositionState,
-                contentPadding = PaddingValues(bottom = if(selectedStop != null) 140.dp else 16.dp),
+                contentPadding = PaddingValues(bottom = if (selectedStop != null) 140.dp else 16.dp),
                 onMapClick = { selectedStop = null }
             ) {
                 filteredStops.forEach { stop ->
                     Marker(
                         state = MarkerState(position = stop.location),
-                        title = "${stop.name} (Line ${stop.line})",
+                        title = "${stop.name} (Lines ${stop.lines.joinToString(", ")})",
                         onClick = {
                             selectedStop = stop
                             false
@@ -209,7 +231,7 @@ fun MainScreen(navController: NavController) {
                 )
             )
 
-            if(selectedStop != null){
+            if (selectedStop != null) {
                 val stop = selectedStop!!
                 val isFavorite = favoriteStops.contains(stop.name)
 
@@ -220,24 +242,39 @@ fun MainScreen(navController: NavController) {
                         .fillMaxWidth(),
                     elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
                     shape = RoundedCornerShape(16.dp)
-                ){
+                ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
-                    ){
-                        Column(modifier = Modifier.weight(1f)){
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(text = stop.name, style = MaterialTheme.typography.titleLarge)
-                            Text(text = "Line ${stop.line}: ${stop.snippet}", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                text = "Lines: ${stop.lines.joinToString(", ")}",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            val extraInfo = mutableListOf<String>()
+                            if(stop.hasBench)
+                                extraInfo.add("Bench")
+                            if(stop.hasShelter)
+                                extraInfo.add("Shelter")
+                            if(extraInfo.isNotEmpty()){
+                                Text(
+                                    text = extraInfo.joinToString(" - "),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.Gray
+                                )
+                            }
                         }
 
                         IconButton(
                             onClick = {
-                                if(currentUser != null){
+                                if (currentUser != null) {
                                     val userRef = db.collection("users").document(currentUser.uid)
-                                    if(isFavorite){
+                                    if (isFavorite) {
                                         userRef.set(
                                             hashMapOf("favorites" to FieldValue.arrayRemove(stop.name)),
                                             SetOptions.merge()
@@ -250,7 +287,7 @@ fun MainScreen(navController: NavController) {
                                     }
                                 }
                             }
-                        ){
+                        ) {
                             Icon(
                                 imageVector = if (isFavorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
                                 contentDescription = "Favorite",
