@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
@@ -68,6 +69,7 @@ fun RegisterScreen(
     var passwordErr by remember { mutableStateOf<String?>(null) }
     var password by remember { mutableStateOf("") }
     var passwordVisibility by remember { mutableStateOf(false) }
+    var passwordConfVisibility by remember { mutableStateOf(false) }
     var passwordConf by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
     var surname by remember { mutableStateOf("") }
@@ -160,9 +162,10 @@ fun RegisterScreen(
             value = city,
             onValueChange = { city = it },
             label = { Text("City") },
+            singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Text,
+                keyboardType = KeyboardType.Password,
                 imeAction = ImeAction.Next
             )
         )
@@ -205,7 +208,10 @@ fun RegisterScreen(
             trailingIcon = {
                 val image =
                     if (passwordVisibility) Icons.Default.Visibility else Icons.Default.VisibilityOff
-                IconButton(onClick = { passwordVisibility = !passwordVisibility }) {
+                IconButton(
+                    onClick = { passwordVisibility = !passwordVisibility },
+                    modifier = Modifier.focusProperties { canFocus = false }
+                ) {
                     Icon(imageVector = image, contentDescription = "Toggle password visibility")
                 }
             },
@@ -220,11 +226,14 @@ fun RegisterScreen(
             label = { Text("Confirm Password") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
-            visualTransformation = if (passwordVisibility) VisualTransformation.None else PasswordVisualTransformation(),
+            visualTransformation = if (passwordConfVisibility) VisualTransformation.None else PasswordVisualTransformation(),
             trailingIcon = {
                 val image =
-                    if (passwordVisibility) Icons.Default.Visibility else Icons.Default.VisibilityOff
-                IconButton(onClick = { passwordVisibility = !passwordVisibility }) {
+                    if (passwordConfVisibility) Icons.Default.Visibility else Icons.Default.VisibilityOff
+                IconButton(
+                    onClick = { passwordConfVisibility = !passwordConfVisibility },
+                    modifier = Modifier.focusProperties{ canFocus = false }
+                ) {
                     Icon(imageVector = image, contentDescription = "Toggle password visibility")
                 }
             },
