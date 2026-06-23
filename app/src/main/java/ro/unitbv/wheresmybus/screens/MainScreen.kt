@@ -40,11 +40,12 @@ import com.google.maps.android.compose.rememberCameraPositionState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.collect
 import org.json.JSONObject
 import ro.unitbv.wheresmybus.data.UserManager
 import ro.unitbv.wheresmybus.models.Screen
+import ro.unitbv.wheresmybus.data.DatabaseProvider
 import androidx.compose.runtime.Immutable
-import com.google.android.gms.maps.model.Polyline
 import com.google.maps.android.clustering.Cluster
 import com.google.maps.android.clustering.ClusterManager
 import com.google.maps.android.clustering.algo.NonHierarchicalDistanceBasedAlgorithm
@@ -52,6 +53,7 @@ import com.google.maps.android.clustering.algo.PreCachingAlgorithmDecorator
 import com.google.maps.android.clustering.view.DefaultClusterRenderer
 import com.google.maps.android.compose.MapEffect
 import com.google.maps.android.compose.Polyline
+import androidx.compose.runtime.collectAsState
 
 @Immutable
 data class BusStop(
@@ -107,10 +109,12 @@ fun MainScreen(navController: NavController) {
     var busStops by remember { mutableStateOf<List<BusStop>>(emptyList()) }
     var busRoutes by remember { mutableStateOf<List<BusRoute>>(emptyList()) }
 
-    var selectedStop by remember { mutableStateOf<BusStop?>(null) }
-    var favoriteStops by remember { mutableStateOf<List<String>>(emptyList()) }
-    val db = Firebase.firestore
     val currentUser = Firebase.auth.currentUser
+    var selectedStop by remember { mutableStateOf<BusStop?>(null) }
+    val favoriteDao = remember { DatabaseProvider.getDatabase(context).favoriteDao() }
+    val favoriteStops by
+        favoriteDao.getFavoritesFlow(currentUser?.uid ?: "").collectAsState(initial = emptyList())
+    val db = Firebase.firestore
 
     LaunchedEffect(Unit) {
         db.collection("bus_stops")
@@ -165,7 +169,8 @@ fun MainScreen(navController: NavController) {
                                 .filter { route -> route.stops.any { it.id == stop.id } }
                                 .map { it.lineName }
 
-                            val allLinesForStop = (stop.lines + linesPassingHere).distinct().sorted()
+                            val allLinesForStop =
+                                (stop.lines + linesPassingHere).distinct().sorted()
                             stop.copy(lines = allLinesForStop)
                         }
 
@@ -181,8 +186,18 @@ fun MainScreen(navController: NavController) {
             db.collection("users").document(currentUser.uid)
                 .addSnapshotListener { snapshot, _ ->
                     if (snapshot != null && snapshot.exists()) {
-                        val favorites = snapshot.get("favorites") as? List<String> ?: emptyList()
-                        favoriteStops = favorites
+                        val cloudFavorites =
+                            snapshot.get("favorites") as? List<String> ?: emptyList()
+                        coroutineScope.launch(Dispatchers.IO) {
+                            val entities = cloudFavorites.map {
+                                ro.unitbv.wheresmybus.data.FavoriteEntity(
+                                    currentUser.uid,
+                                    it
+                                )
+                            }
+                            favoriteDao.clearUserFavorites(currentUser.uid)
+                            favoriteDao.insertAll(entities)
+                        }
                     }
                 }
         }
@@ -204,9 +219,17 @@ fun MainScreen(navController: NavController) {
             if (searchQuery.isBlank()) {
                 busStops
             } else {
-                val routeStops = activeRoutes.flatMap{ it.stops }.toSet()
+                val routeStops = activeRoutes.flatMap { it.stops }.toSet()
                 busStops.filter { stop ->
-                    stop.name.contains(searchQuery, ignoreCase = true) || stop.lines.any { it.equals(searchQuery, ignoreCase = true) } || routeStops.contains(stop)
+                    stop.name.contains(
+                        searchQuery,
+                        ignoreCase = true
+                    ) || stop.lines.any {
+                        it.equals(
+                            searchQuery,
+                            ignoreCase = true
+                        )
+                    } || routeStops.contains(stop)
                 }
             }
         }
@@ -228,8 +251,9 @@ fun MainScreen(navController: NavController) {
             TopAppBar(
                 title = { Text("Stops Map") },
                 actions = {
+                    // Butonul din TopBar doar navighează
                     IconButton(onClick = { navController.navigate(Screen.Favorites.route) }) {
-                        Icon(imageVector = Icons.Default.Star, contentDescription = "Favorites")
+                        Icon(imageVector = Icons.Default.Star, contentDescription = "Go to Favorites")
                     }
                     IconButton(
                         onClick = {
@@ -242,10 +266,7 @@ fun MainScreen(navController: NavController) {
                             }
                         }
                     ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ExitToApp,
-                            contentDescription = "Logout"
-                        )
+                        Icon(imageVector = Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Logout")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -255,9 +276,11 @@ fun MainScreen(navController: NavController) {
             )
         }
     ) { paddingValues ->
-        Box(modifier = Modifier
-            .fillMaxSize()
-            .padding(paddingValues)) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
             var clusterManager by remember { mutableStateOf<ClusterManager<BusStop>?>(null) }
 
             GoogleMap(
@@ -371,29 +394,21 @@ fun MainScreen(navController: NavController) {
                             onClick = {
                                 if (currentUser != null) {
                                     val userRef = db.collection("users").document(currentUser.uid)
-                                    if (isFavorite) {
-                                        userRef.set(
-                                            hashMapOf(
-                                                "favorites" to FieldValue.arrayRemove(
-                                                    stop.name
-                                                )
-                                            ), SetOptions.merge()
-                                        )
-                                    } else {
-                                        userRef.set(
-                                            hashMapOf(
-                                                "favorites" to FieldValue.arrayUnion(
-                                                    stop.name
-                                                )
-                                            ), SetOptions.merge()
-                                        )
+                                    coroutineScope.launch(Dispatchers.IO) {
+                                        if (isFavorite) {
+                                            favoriteDao.deleteFavorite(currentUser.uid, stop.name)
+                                            userRef.update("favorites", FieldValue.arrayRemove(stop.name))
+                                        } else {
+                                            favoriteDao.insertFavorite(ro.unitbv.wheresmybus.data.FavoriteEntity(currentUser.uid, stop.name))
+                                            userRef.update("favorites", FieldValue.arrayUnion(stop.name))
+                                        }
                                     }
                                 }
                             }
                         ) {
                             Icon(
                                 imageVector = if (isFavorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
-                                contentDescription = "Favorite",
+                                contentDescription = "Toggle Favorites",
                                 tint = if (isFavorite) Color(0xFFFFD700) else Color.Gray,
                                 modifier = Modifier.size(32.dp)
                             )
@@ -515,39 +530,39 @@ suspend fun loadRoutesFromJson(
         val stopsMap = availableStops.associateBy { it.id }
 
         val allNodes = mutableMapOf<Long, LatLng>()
-        for(i in 0 until elementsArray.length()){
+        for (i in 0 until elementsArray.length()) {
             val elem = elementsArray.getJSONObject(i)
-            if(elem.optString("type") == "node"){
+            if (elem.optString("type") == "node") {
                 val lat = elem.optDouble("lat")
                 val lon = elem.optDouble("lon")
-                if(!lat.isNaN() && !lon.isNaN()){
+                if (!lat.isNaN() && !lon.isNaN()) {
                     allNodes[elem.optLong("id")] = LatLng(lat, lon)
                 }
             }
         }
 
         val allWays = mutableMapOf<Long, List<LatLng>>()
-        for(i in 0 until elementsArray.length()){
+        for (i in 0 until elementsArray.length()) {
             val elem = elementsArray.getJSONObject(i)
-            if(elem.optString("type") == "way"){
+            if (elem.optString("type") == "way") {
                 val wayId = elem.optLong("id")
                 val wayPoints = mutableListOf<LatLng>()
 
                 val geometry = elem.optJSONArray("geometry")
-                if(geometry != null){
-                    for(k in 0 until geometry.length()){
+                if (geometry != null) {
+                    for (k in 0 until geometry.length()) {
                         val geoPoint = geometry.getJSONObject(k)
                         val lat = geoPoint.optDouble("lat")
                         val lon = geoPoint.optDouble("lon")
-                        if(!lat.isNaN() && !lon.isNaN())
+                        if (!lat.isNaN() && !lon.isNaN())
                             wayPoints.add(LatLng(lat, lon))
                     }
                 } else {
                     val nodes = elem.optJSONArray("nodes")
-                    if(nodes != null){
-                        for(k in 0 until nodes.length()){
+                    if (nodes != null) {
+                        for (k in 0 until nodes.length()) {
                             val nodeId = nodes.optLong(k)
-                            allNodes[nodeId]?.let{ wayPoints.add(it) }
+                            allNodes[nodeId]?.let { wayPoints.add(it) }
                         }
                     }
                 }
@@ -560,12 +575,15 @@ suspend fun loadRoutesFromJson(
             if (relation.optString("type") == "relation") {
                 val tags = relation.optJSONObject("tags")
 
-                if (tags != null && tags.optString("type") == "route" && (tags.optString("route") == "bus" || tags.optString("route") == "trolleybus")) {
+                if (tags != null && tags.optString("type") == "route" && (tags.optString("route") == "bus" || tags.optString(
+                        "route"
+                    ) == "trolleybus")
+                ) {
                     val lineName = tags.optString("ref", "Unknown")
 
                     val hexColor = tags.optString("colour", "#9C27B0")
                     val routeColor = try {
-                        Color(android.graphics.Color.parseColor(if (!hexColor.startsWith("#")) "#$hexColor" else hexColor))
+                        Color(parseColor(if (!hexColor.startsWith("#")) "#$hexColor" else hexColor))
                     } catch (e: Exception) {
                         Color(0xFF9C27B0)
                     }
@@ -590,7 +608,12 @@ suspend fun loadRoutesFromJson(
                                         val geoPoint = geometry.getJSONObject(k)
                                         val lat = geoPoint.optDouble("lat")
                                         val lon = geoPoint.optDouble("lon")
-                                        if (!lat.isNaN() && !lon.isNaN()) wayPoints.add(LatLng(lat, lon))
+                                        if (!lat.isNaN() && !lon.isNaN()) wayPoints.add(
+                                            LatLng(
+                                                lat,
+                                                lon
+                                            )
+                                        )
                                     }
                                 }
 
@@ -602,13 +625,19 @@ suspend fun loadRoutesFromJson(
                                         val firstWayPoint = wayPoints.first()
                                         val lastWayPoint = wayPoints.last()
 
-                                        val dLatFirst = lastDrawnPoint.latitude - firstWayPoint.latitude
-                                        val dLonFirst = lastDrawnPoint.longitude - firstWayPoint.longitude
-                                        val distToFirst = (dLatFirst * dLatFirst) + (dLonFirst * dLonFirst)
+                                        val dLatFirst =
+                                            lastDrawnPoint.latitude - firstWayPoint.latitude
+                                        val dLonFirst =
+                                            lastDrawnPoint.longitude - firstWayPoint.longitude
+                                        val distToFirst =
+                                            (dLatFirst * dLatFirst) + (dLonFirst * dLonFirst)
 
-                                        val dLatLast = lastDrawnPoint.latitude - lastWayPoint.latitude
-                                        val dLonLast = lastDrawnPoint.longitude - lastWayPoint.longitude
-                                        val distToLast = (dLatLast * dLatLast) + (dLonLast * dLonLast)
+                                        val dLatLast =
+                                            lastDrawnPoint.latitude - lastWayPoint.latitude
+                                        val dLonLast =
+                                            lastDrawnPoint.longitude - lastWayPoint.longitude
+                                        val distToLast =
+                                            (dLatLast * dLatLast) + (dLonLast * dLonLast)
 
                                         if (distToLast < distToFirst) {
                                             routePoints.addAll(wayPoints.reversed())
@@ -617,10 +646,10 @@ suspend fun loadRoutesFromJson(
                                         }
                                     }
                                 }
-                            } else if(type == "node"){
-                                if(refId != -1L){
+                            } else if (type == "node") {
+                                if (refId != -1L) {
                                     val foundStop = stopsMap[refId]
-                                    if(foundStop != null){
+                                    if (foundStop != null) {
                                         routeStops.add(foundStop)
                                     }
                                 }
@@ -645,13 +674,16 @@ suspend fun loadRoutesFromJson(
                             val sLon = stop.location.longitude
 
                             if (sLat < minLat - 0.0005 || sLat > maxLat + 0.0005 ||
-                                sLon < minLon - 0.0005 || sLon > maxLon + 0.0005) {
+                                sLon < minLon - 0.0005 || sLon > maxLon + 0.0005
+                            ) {
                                 continue
                             }
 
                             for (pt in routePoints) {
-                                val dLat = if (pt.latitude > sLat) pt.latitude - sLat else sLat - pt.latitude
-                                val dLon = if (pt.longitude > sLon) pt.longitude - sLon else sLon - pt.longitude
+                                val dLat =
+                                    if (pt.latitude > sLat) pt.latitude - sLat else sLat - pt.latitude
+                                val dLon =
+                                    if (pt.longitude > sLon) pt.longitude - sLon else sLon - pt.longitude
 
                                 if (dLat < 0.0003 && dLon < 0.0003) {
                                     routeStops.add(stop)

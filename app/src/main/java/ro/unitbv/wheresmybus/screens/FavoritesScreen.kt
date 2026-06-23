@@ -10,36 +10,26 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.firestore
-import androidx.compose.material3.Text
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FavoritesScreen(navController: NavController) {
-    var favoriteStops by remember { mutableStateOf<List<String>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-
-    val db = Firebase.firestore
+    val context = LocalContext.current
     val currentUser = Firebase.auth.currentUser
+    val db = Firebase.firestore
+    val coroutineScope = rememberCoroutineScope()
 
-    LaunchedEffect(Unit) {
-        if (currentUser != null) {
-            db.collection("users").document(currentUser.uid)
-                .addSnapshotListener { snapshot, _ ->
-                    if (snapshot != null && snapshot.exists()) {
-                        favoriteStops = snapshot.get("favorites") as? List<String> ?: emptyList()
-                    }
-                    isLoading = false
-                }
-        } else {
-            isLoading = false
-        }
-    }
+    val favoriteDao = remember { ro.unitbv.wheresmybus.data.DatabaseProvider.getDatabase(context).favoriteDao() }
+    val favoriteStops by favoriteDao.getFavoritesFlow(currentUser?.uid ?: "").collectAsState(initial = emptyList())
 
     Scaffold(
         topBar = {
@@ -62,9 +52,7 @@ fun FavoritesScreen(navController: NavController) {
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            if (isLoading) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-            } else if (favoriteStops.isEmpty()) {
+            if (favoriteStops.isEmpty()) {
                 Text(
                     text = "No favorite stops added yet.",
                     modifier = Modifier.align(Alignment.Center),
@@ -95,11 +83,11 @@ fun FavoritesScreen(navController: NavController) {
                                 IconButton(
                                     onClick = {
                                         if (currentUser != null) {
-                                            db.collection("users").document(currentUser.uid)
-                                                .update(
-                                                    "favorites",
-                                                    FieldValue.arrayRemove(stopName)
-                                                )
+                                            coroutineScope.launch(Dispatchers.IO) {
+                                                favoriteDao.deleteFavorite(currentUser.uid, stopName)
+                                                db.collection("users").document(currentUser.uid)
+                                                    .update("favorites", FieldValue.arrayRemove(stopName))
+                                            }
                                         }
                                     }
                                 ) {
