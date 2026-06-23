@@ -88,9 +88,9 @@ fun LoginScreen(navController: NavController) {
 
                                 if (isNewUser && user != null) {
                                     val userData = hashMapOf(
-                                        "name" to (user.displayName ?: "Utilizator Google"),
+                                        "name" to (user.displayName ?: "Google User"),
                                         "email" to (user.email ?: ""),
-                                        "city" to "Necunoscut"
+                                        "city" to "Unknown"
                                     )
                                     Firebase.firestore.collection("users").document(user.uid).set(userData)
                                 }

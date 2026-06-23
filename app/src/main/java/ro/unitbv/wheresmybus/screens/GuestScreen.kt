@@ -49,8 +49,8 @@ fun GuestScreen(navController: NavController) {
         ) {
             Marker(
                 state = MarkerState(position = LatLng(45.650000, 25.600000)),
-                title = "Linia 4",
-                snippet = "Apasa pentru detalii",
+                title = "Line 4",
+                snippet = "Click for details",
                 onClick = {
                     navController.navigate(Screen.Login.route)
                     true

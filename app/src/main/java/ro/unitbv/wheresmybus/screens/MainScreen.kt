@@ -54,6 +54,8 @@ import com.google.maps.android.clustering.view.DefaultClusterRenderer
 import com.google.maps.android.compose.MapEffect
 import com.google.maps.android.compose.Polyline
 import androidx.compose.runtime.collectAsState
+import ro.unitbv.wheresmybus.network.RetrofitClient
+import ro.unitbv.wheresmybus.network.UserData
 
 @Immutable
 data class BusStop(
@@ -113,8 +115,35 @@ fun MainScreen(navController: NavController) {
     var selectedStop by remember { mutableStateOf<BusStop?>(null) }
     val favoriteDao = remember { DatabaseProvider.getDatabase(context).favoriteDao() }
     val favoriteStops by
-        favoriteDao.getFavoritesFlow(currentUser?.uid ?: "").collectAsState(initial = emptyList())
+    favoriteDao.getFavoritesFlow(currentUser?.uid ?: "").collectAsState(initial = emptyList())
     val db = Firebase.firestore
+    var scheduleResponse by remember { mutableStateOf("Loading...") }
+    var isUrgent by remember { mutableStateOf(false) }
+
+    LaunchedEffect(selectedStop) {
+        if (selectedStop != null) {
+            while (true) {
+                try {
+                    val data = RetrofitClient.instance.getSchedule()
+                    val sortedData = data.sortedBy { it.eta }
+                    val fastestBus = sortedData.firstOrNull()
+
+                    if (fastestBus != null) {
+                        isUrgent = fastestBus.eta <= 2
+                        scheduleResponse = "Line ${fastestBus.line}: ${fastestBus.eta} min"
+                    } else {
+                        scheduleResponse = "No available buses."
+                    }
+                } catch (e: Exception) {
+                    scheduleResponse = "Schedule unavailable."
+                    isUrgent = false
+                }
+                kotlinx.coroutines.delay(5000)
+            }
+        } else {
+            scheduleResponse = "Loading..."
+        }
+    }
 
     LaunchedEffect(Unit) {
         db.collection("bus_stops")
@@ -251,9 +280,11 @@ fun MainScreen(navController: NavController) {
             TopAppBar(
                 title = { Text("Stops Map") },
                 actions = {
-                    // Butonul din TopBar doar navighează
                     IconButton(onClick = { navController.navigate(Screen.Favorites.route) }) {
-                        Icon(imageVector = Icons.Default.Star, contentDescription = "Go to Favorites")
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = "Go to Favorites"
+                        )
                     }
                     IconButton(
                         onClick = {
@@ -266,7 +297,10 @@ fun MainScreen(navController: NavController) {
                             }
                         }
                     ) {
-                        Icon(imageVector = Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Logout")
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ExitToApp,
+                            contentDescription = "Logout"
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -388,6 +422,11 @@ fun MainScreen(navController: NavController) {
                                     color = Color.Gray
                                 )
                             }
+                            Text(
+                                text = scheduleResponse,
+                                style = if (isUrgent) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium,
+                                color = if (isUrgent) Color.Red else MaterialTheme.colorScheme.onSurface
+                            )
                         }
 
                         IconButton(
@@ -397,10 +436,21 @@ fun MainScreen(navController: NavController) {
                                     coroutineScope.launch(Dispatchers.IO) {
                                         if (isFavorite) {
                                             favoriteDao.deleteFavorite(currentUser.uid, stop.name)
-                                            userRef.update("favorites", FieldValue.arrayRemove(stop.name))
+                                            userRef.update(
+                                                "favorites",
+                                                FieldValue.arrayRemove(stop.name)
+                                            )
                                         } else {
-                                            favoriteDao.insertFavorite(ro.unitbv.wheresmybus.data.FavoriteEntity(currentUser.uid, stop.name))
-                                            userRef.update("favorites", FieldValue.arrayUnion(stop.name))
+                                            favoriteDao.insertFavorite(
+                                                ro.unitbv.wheresmybus.data.FavoriteEntity(
+                                                    currentUser.uid,
+                                                    stop.name
+                                                )
+                                            )
+                                            userRef.update(
+                                                "favorites",
+                                                FieldValue.arrayUnion(stop.name)
+                                            )
                                         }
                                     }
                                 }

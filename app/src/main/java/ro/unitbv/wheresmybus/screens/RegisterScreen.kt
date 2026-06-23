@@ -60,7 +60,7 @@ fun RegisterScreen(
     navController: NavController,
     modifier: Modifier = Modifier,
     onRegisterClick: () -> Unit = {},
-    onLoginClick: (email: String, pasword: String) -> Unit = { _, _ -> },
+    onLoginClick: (email: String, password: String) -> Unit = { _, _ -> },
     isLoading: Boolean = false,
     errorMessage: String? = null
 ) {
