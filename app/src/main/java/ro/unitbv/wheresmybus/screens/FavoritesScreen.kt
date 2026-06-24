@@ -19,6 +19,7 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.firestore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.clickable
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -28,8 +29,10 @@ fun FavoritesScreen(navController: NavController) {
     val db = Firebase.firestore
     val coroutineScope = rememberCoroutineScope()
 
-    val favoriteDao = remember { ro.unitbv.wheresmybus.data.DatabaseProvider.getDatabase(context).favoriteDao() }
-    val favoriteStops by favoriteDao.getFavoritesFlow(currentUser?.uid ?: "").collectAsState(initial = emptyList())
+    val favoriteDao =
+        remember { ro.unitbv.wheresmybus.data.DatabaseProvider.getDatabase(context).favoriteDao() }
+    val favoriteStops by favoriteDao.getFavoritesFlow(currentUser?.uid ?: "")
+        .collectAsState(initial = emptyList())
 
     Scaffold(
         topBar = {
@@ -54,7 +57,7 @@ fun FavoritesScreen(navController: NavController) {
         ) {
             if (favoriteStops.isEmpty()) {
                 Text(
-                    text = "No favorite stops added yet.",
+                    text = "No favorite stops added yet",
                     modifier = Modifier.align(Alignment.Center),
                     style = MaterialTheme.typography.bodyLarge
                 )
@@ -66,7 +69,12 @@ fun FavoritesScreen(navController: NavController) {
                 ) {
                     items(favoriteStops) { stopName ->
                         Card(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable{
+                                    navController.previousBackStackEntry?.savedStateHandle?.set("selected_favorite", stopName)
+                                    navController.popBackStack()
+                                },
                             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                         ) {
                             Row(
@@ -84,9 +92,15 @@ fun FavoritesScreen(navController: NavController) {
                                     onClick = {
                                         if (currentUser != null) {
                                             coroutineScope.launch(Dispatchers.IO) {
-                                                favoriteDao.deleteFavorite(currentUser.uid, stopName)
+                                                favoriteDao.deleteFavorite(
+                                                    currentUser.uid,
+                                                    stopName
+                                                )
                                                 db.collection("users").document(currentUser.uid)
-                                                    .update("favorites", FieldValue.arrayRemove(stopName))
+                                                    .update(
+                                                        "favorites",
+                                                        FieldValue.arrayRemove(stopName)
+                                                    )
                                             }
                                         }
                                     }

@@ -57,6 +57,7 @@ import com.google.maps.android.compose.Polyline
 import androidx.compose.runtime.collectAsState
 import ro.unitbv.wheresmybus.network.RetrofitClient
 import androidx.compose.animation.core.animateDpAsState
+import com.google.android.gms.maps.CameraUpdateFactory
 
 @Immutable
 data class BusStop(
@@ -120,6 +121,23 @@ fun MainScreen(navController: NavController) {
     val db = Firebase.firestore
     var scheduleResponse by remember { mutableStateOf("Loading...") }
     var isUrgent by remember { mutableStateOf(false) }
+
+    val savedStateHandle = navController.currentBackStackEntry?.savedStateHandle
+    val favoriteToSelect by savedStateHandle?.getStateFlow<String?>("selected_favorite", null)
+        ?.collectAsState() ?: remember { mutableStateOf(null) }
+
+    LaunchedEffect(favoriteToSelect, busStops) {
+        if(favoriteToSelect != null && busStops.isNotEmpty()){
+            val stop = busStops.find{ it.name == favoriteToSelect }
+            if(stop != null){
+                selectedStop = stop
+                cameraPositionState.animate(
+                    CameraUpdateFactory.newLatLngZoom(stop.location, 16f), 1000
+                )
+            }
+            savedStateHandle?.remove<String>("selected_favorite")
+        }
+    }
 
     LaunchedEffect(selectedStop) {
         if (selectedStop != null) {
@@ -397,9 +415,11 @@ fun MainScreen(navController: NavController) {
                 onClick = {
                     navController.navigate(Screen.Alerts.route)
                 },
-                modifier = Modifier.align(Alignment.BottomStart).padding(start = 16.dp, bottom = fabBottomPadding),
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 16.dp, bottom = fabBottomPadding),
                 containerColor = MaterialTheme.colorScheme.errorContainer
-            ){
+            ) {
                 Icon(
                     imageVector = Icons.Default.BusAlert,
                     contentDescription = "Traffic Alerts"
