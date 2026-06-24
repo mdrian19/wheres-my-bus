@@ -63,6 +63,6 @@ Pentru a rula proiectul local, sunt necesari următorii pași:
 
 ## Autori
 
-Proiectul prezintă creația digitală a studentilor Mincă Teodor-Andrei și Mincu Florin-Adrian
-Grupa 10LF342
-DAWM - 2026
+Proiectul prezintă creația digitală a studentilor Mincă Teodor-Andrei și Mincu Florin-Adrian<br>
+Grupa 10LF342<br>
+DAWM - 2026<br>
