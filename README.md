@@ -59,6 +59,8 @@ Pentru a rula proiectul local, sunt necesari următorii pași:
 1.  **Firebase**: Adăugați fișierul `google-services.json` în folderul `app/`.
 2.  **Maps API Key**: Definiți cheia în `local.properties`:
     
+---
+
 ## Autori
 
 Proiectul prezintă creația digitală a studentilor Mincă Teodor-Andrei și Mincu Florin-Adrian
