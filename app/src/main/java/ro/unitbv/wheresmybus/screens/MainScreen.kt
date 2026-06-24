@@ -1,5 +1,6 @@
 package ro.unitbv.wheresmybus.screens
 
+import android.R.attr.onClick
 import android.content.Context
 import android.graphics.Color.parseColor
 import android.util.Log
@@ -14,6 +15,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,26 +31,21 @@ import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
-import com.google.firebase.auth.ktx.auth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.firestore
 import com.google.maps.android.clustering.ClusterItem
 import com.google.maps.android.compose.GoogleMap
-import com.google.maps.android.compose.clustering.Clustering
 import com.google.maps.android.compose.rememberCameraPositionState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.flow.collect
 import org.json.JSONObject
 import ro.unitbv.wheresmybus.data.UserManager
 import ro.unitbv.wheresmybus.models.Screen
 import ro.unitbv.wheresmybus.data.DatabaseProvider
 import androidx.compose.runtime.Immutable
-import com.google.maps.android.clustering.Cluster
 import com.google.maps.android.clustering.ClusterManager
 import com.google.maps.android.clustering.algo.NonHierarchicalDistanceBasedAlgorithm
 import com.google.maps.android.clustering.algo.PreCachingAlgorithmDecorator
@@ -57,7 +55,17 @@ import com.google.maps.android.compose.Polyline
 import androidx.compose.runtime.collectAsState
 import ro.unitbv.wheresmybus.network.RetrofitClient
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.text.font.FontWeight
 import com.google.android.gms.maps.CameraUpdateFactory
+import java.text.Normalizer
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import com.google.maps.android.compose.MapProperties
+import com.google.maps.android.compose.MapUiSettings
 
 @Immutable
 data class BusStop(
@@ -110,6 +118,11 @@ fun MainScreen(navController: NavController) {
     }
 
     var searchQuery by remember { mutableStateOf("") }
+
+    val filterOptions = listOf("All", "Lines", "Stops")
+    var selectedFilter by remember { mutableStateOf(filterOptions[0]) }
+    var expandedFilterMenu by remember { mutableStateOf(false) }
+
     var busStops by remember { mutableStateOf<List<BusStop>>(emptyList()) }
     var busRoutes by remember { mutableStateOf<List<BusRoute>>(emptyList()) }
 
@@ -122,14 +135,36 @@ fun MainScreen(navController: NavController) {
     var scheduleResponse by remember { mutableStateOf("Loading...") }
     var isUrgent by remember { mutableStateOf(false) }
 
+    var mapProperties by remember { mutableStateOf(MapProperties(isMyLocationEnabled = false)) }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        if (isGranted) {
+            mapProperties = MapProperties(isMyLocationEnabled = true)
+        }
+    }
+
     val savedStateHandle = navController.currentBackStackEntry?.savedStateHandle
     val favoriteToSelect by savedStateHandle?.getStateFlow<String?>("selected_favorite", null)
         ?.collectAsState() ?: remember { mutableStateOf(null) }
 
+    LaunchedEffect(Unit) {
+        val permissionCheckResult = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
+        if(permissionCheckResult == PackageManager.PERMISSION_GRANTED){
+            mapProperties = MapProperties(isMyLocationEnabled = true)
+        } else {
+            locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+    }
+
     LaunchedEffect(favoriteToSelect, busStops) {
-        if(favoriteToSelect != null && busStops.isNotEmpty()){
-            val stop = busStops.find{ it.name == favoriteToSelect }
-            if(stop != null){
+        if (favoriteToSelect != null && busStops.isNotEmpty()) {
+            val stop = busStops.find { it.name == favoriteToSelect }
+            if (stop != null) {
                 selectedStop = stop
                 cameraPositionState.animate(
                     CameraUpdateFactory.newLatLngZoom(stop.location, 16f), 1000
@@ -254,45 +289,44 @@ fun MainScreen(navController: NavController) {
 
     val activeRoutes by remember {
         derivedStateOf {
-            val query = searchQuery.trim()
+            val rawQuery = searchQuery.trim()
+            val query = rawQuery.removeDiacritics()
             if (query.isBlank()) {
                 emptyList()
             } else {
-                busRoutes.filter { it.lineName.equals(searchQuery, ignoreCase = true) }
+                if (selectedFilter == "Stops") {
+                    emptyList()
+                } else {
+                    busRoutes.filter { it.lineName.removeDiacritics().contains(query, ignoreCase = true) }
+                }
             }
         }
     }
 
     val filteredStops by remember {
         derivedStateOf {
-            if (searchQuery.isBlank()) {
+            val rawQuery = searchQuery.trim()
+            val query = rawQuery.removeDiacritics()
+            if (query.isBlank()) {
                 busStops
             } else {
-                val routeStops = activeRoutes.flatMap { it.stops }.toSet()
-                busStops.filter { stop ->
-                    stop.name.contains(
-                        searchQuery,
-                        ignoreCase = true
-                    ) || stop.lines.any {
-                        it.equals(
-                            searchQuery,
-                            ignoreCase = true
-                        )
-                    } || routeStops.contains(stop)
+                if (selectedFilter == "Lines") {
+                    activeRoutes.flatMap { it.stops }.toSet().toList()
+                } else {
+                    val routeStops = activeRoutes.flatMap { it.stops }.toSet()
+                    busStops.filter { stop ->
+                        val matchesName = stop.name.removeDiacritics().contains(query, ignoreCase = true)
+                        val matchesLine = stop.lines.any { it.removeDiacritics().equals(query, ignoreCase = true) }
+
+                        if (selectedFilter == "Stops") {
+                            matchesName
+                        } else {
+                            matchesName || matchesLine || routeStops.contains(stop)
+                        }
+                    }
                 }
             }
         }
-    }
-
-    val onClusterItemClick: (BusStop) -> Boolean = remember {
-        { stop ->
-            selectedStop = stop
-            false
-        }
-    }
-
-    val onClusterClick: (Cluster<BusStop>) -> Boolean = remember {
-        { false }
     }
 
     Scaffold(
@@ -340,7 +374,9 @@ fun MainScreen(navController: NavController) {
             GoogleMap(
                 modifier = Modifier.fillMaxSize(),
                 cameraPositionState = cameraPositionState,
-                contentPadding = PaddingValues(bottom = if (selectedStop != null) 140.dp else 16.dp)
+                contentPadding = PaddingValues(bottom = if (selectedStop != null) 140.dp else 16.dp),
+                properties = mapProperties,
+                uiSettings = MapUiSettings(myLocationButtonEnabled = true)
             ) {
                 MapEffect(Unit) { map ->
                     if (clusterManager == null) {
@@ -384,28 +420,67 @@ fun MainScreen(navController: NavController) {
                     )
                 }
             }
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                placeholder = { Text("Search line(e.g. 36, 4)") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search icon") },
-                singleLine = true,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surface,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = Color.Transparent
-                ),
-                shape = RoundedCornerShape(16.dp),
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp)
-                    .align(Alignment.TopCenter),
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Text,
-                    imeAction = ImeAction.Go
+                    .align(Alignment.TopCenter)
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text(if (selectedFilter == "Lines") "Ex: 36, 4" else "Search...") },
+
+                    leadingIcon = {
+                        Box {
+                            Row(
+                                modifier = Modifier
+                                    .clickable { expandedFilterMenu = true }
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.FilterList, contentDescription = "Filter", modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(text = selectedFilter, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                Icon(Icons.Default.ArrowDropDown, contentDescription = "Dropdown", modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                            }
+
+                            DropdownMenu(
+                                expanded = expandedFilterMenu,
+                                onDismissRequest = { expandedFilterMenu = false }
+                            ) {
+                                filterOptions.forEach { option ->
+                                    DropdownMenuItem(
+                                        text = { Text(option) },
+                                        onClick = {
+                                            selectedFilter = option
+                                            expandedFilterMenu = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    },
+
+                    trailingIcon = {
+                        Icon(Icons.Default.Search, contentDescription = "Search icon")
+                    },
+
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    ),
+                    shape = RoundedCornerShape(24.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Text,
+                        imeAction = ImeAction.Go
+                    )
                 )
-            )
+            }
 
             val fabBottomPadding by animateDpAsState(
                 targetValue = if (selectedStop != null) 150.dp else 16.dp,
@@ -797,4 +872,10 @@ suspend fun loadRoutesFromJson(
     }
 
     return@withContext loadedRoutes
+}
+
+fun String.removeDiacritics(): String{
+    val normalizedString = Normalizer.normalize(this, Normalizer.Form.NFD)
+    val regex = "\\p{InCombiningDiacriticalMarks}+".toRegex()
+    return regex.replace(normalizedString, "")
 }
