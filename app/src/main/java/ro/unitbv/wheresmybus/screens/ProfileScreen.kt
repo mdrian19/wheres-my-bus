@@ -1,5 +1,6 @@
 package ro.unitbv.wheresmybus.screens
 
+import android.os.UserManager
 import android.widget.Switch
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
@@ -30,6 +31,7 @@ import androidx.compose.ui.semantics.Role.Companion.Switch
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import ro.unitbv.wheresmybus.data.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,6 +43,7 @@ fun ProfileScreen(navController: NavController){
     val isDark by remember(context) {
         context.settingsDataStore.data.map { it[DARK_MODE_KEY] ?: false }
     }.collectAsState(initial = false)
+    val userManager = remember { UserManager(context) }
 
     var newPassword by remember {mutableStateOf("")}
     var isLoading by remember { mutableStateOf(false)}
@@ -224,9 +227,12 @@ fun ProfileScreen(navController: NavController){
 
             OutlinedButton(
                 onClick = {
-                    auth.signOut()
-                    navController.navigate("guest_screen") {
-                        popUpTo(0) { inclusive = true }
+                    scope.launch{
+                        auth.signOut()
+                        userManager.setLoggedIn(loggedIn = false)
+                        navController.navigate("guest_screen") {
+                            popUpTo(0) { inclusive = true }
+                        }
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),

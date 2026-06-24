@@ -30,6 +30,12 @@ class UserManager(private val context: Context) {
         }
     }
 
+    suspend fun logout() {
+        context.settingsDataStore.edit { preferences ->
+            preferences[IS_LOGGED_IN] = false
+        }
+    }
+
     suspend fun saveUserData(email: String, passwd: String, name: String, city: String){
         context.userDataStore.edit{ prefs ->
             prefs[USER_EMAIL] = email
