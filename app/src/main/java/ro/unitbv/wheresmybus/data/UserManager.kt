@@ -10,7 +10,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
-val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "user_prefs")
+val Context.userDataStore: DataStore<Preferences> by preferencesDataStore(name = "user_prefs")
 
 class UserManager(private val context: Context) {
 
@@ -22,16 +22,16 @@ class UserManager(private val context: Context) {
         val IS_LOGGED_IN = booleanPreferencesKey("is_logged_in")
     }
 
-    val isLoggedInFlow: Flow<Boolean?> = context.dataStore.data.map{ it[IS_LOGGED_IN] ?: false }
+    val isLoggedInFlow: Flow<Boolean?> = context.userDataStore.data.map{ it[IS_LOGGED_IN] ?: false }
 
     suspend fun setLoggedIn (loggedIn: Boolean) {
-        context.dataStore.edit{ prefs ->
+        context.userDataStore.edit{ prefs ->
             prefs[IS_LOGGED_IN] = loggedIn
         }
     }
 
     suspend fun saveUserData(email: String, passwd: String, name: String, city: String){
-        context.dataStore.edit{ prefs ->
+        context.userDataStore.edit{ prefs ->
             prefs[USER_EMAIL] = email
             prefs[USER_PASSWORD] = passwd
             prefs[USER_NAME] = name
@@ -39,7 +39,7 @@ class UserManager(private val context: Context) {
         }
     }
 
-    val userEmailFlow: Flow<String?> = context.dataStore.data.map{ it[USER_EMAIL] ?: "" }
-    val userPasswordFlow: Flow<String?> = context.dataStore.data.map{ it[USER_PASSWORD] ?: "" }
+    val userEmailFlow: Flow<String?> = context.userDataStore.data.map{ it[USER_EMAIL] ?: "" }
+    val userPasswordFlow: Flow<String?> = context.userDataStore.data.map{ it[USER_PASSWORD] ?: "" }
 
 }

@@ -12,6 +12,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -30,6 +32,9 @@ import ro.unitbv.wheresmybus.ui.theme.WheresMyBusTheme
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import kotlinx.coroutines.flow.map
+import ro.unitbv.wheresmybus.data.DARK_MODE_KEY
+import ro.unitbv.wheresmybus.data.settingsDataStore
 import ro.unitbv.wheresmybus.screens.AlertsScreen
 import ro.unitbv.wheresmybus.screens.FavoritesScreen
 import ro.unitbv.wheresmybus.screens.ProfileScreen
@@ -65,30 +70,35 @@ fun AppNavigation(){
     } else {
         val navController = rememberNavController()
         val startRoute = if(isLoggedIn) Screen.Main.route else Screen.Guest.route
+        val isDarkMode by remember(context) {
+            context.settingsDataStore.data.map { it[DARK_MODE_KEY] ?: false }
+        }.collectAsState(initial = false)
 
-        NavHost(navController = navController, startDestination = startRoute){
-            composable(Screen.Guest.route){
-                GuestScreen(navController = navController)
-            }
-            composable(Screen.Login.route){
-                LoginScreen(navController = navController)
-            }
-            composable(Screen.Register.route){
-                RegisterScreen(navController = navController)
-            }
-            composable(Screen.Main.route) {
-                MainScreen(navController = navController)
-            }
-            composable(Screen.Favorites.route) {
-                FavoritesScreen(navController = navController)
-            }
-            composable(Screen.Alerts.route){
-                AlertsScreen(
-                    onBackClick = { navController.popBackStack() }
-                )
-            }
-            composable(Screen.Profile.route){
-                ProfileScreen(navController = navController)
+        WheresMyBusTheme(darkTheme = isDarkMode) {
+            NavHost(navController = navController, startDestination = startRoute) {
+                composable(Screen.Guest.route) {
+                    GuestScreen(navController = navController)
+                }
+                composable(Screen.Login.route) {
+                    LoginScreen(navController = navController)
+                }
+                composable(Screen.Register.route) {
+                    RegisterScreen(navController = navController)
+                }
+                composable(Screen.Main.route) {
+                    MainScreen(navController = navController)
+                }
+                composable(Screen.Favorites.route) {
+                    FavoritesScreen(navController = navController)
+                }
+                composable(Screen.Alerts.route) {
+                    AlertsScreen(
+                        onBackClick = { navController.popBackStack() }
+                    )
+                }
+                composable(Screen.Profile.route) {
+                    ProfileScreen(navController = navController)
+                }
             }
         }
     }

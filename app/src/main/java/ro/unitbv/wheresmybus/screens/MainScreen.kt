@@ -1,6 +1,5 @@
 package ro.unitbv.wheresmybus.screens
 
-import android.R.attr.onClick
 import android.content.Context
 import android.graphics.Color.parseColor
 import android.util.Log
@@ -9,7 +8,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.BusAlert
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
@@ -43,9 +41,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import ro.unitbv.wheresmybus.data.UserManager
 import ro.unitbv.wheresmybus.models.Screen
 import ro.unitbv.wheresmybus.data.DatabaseProvider
+import ro.unitbv.wheresmybus.data.FIRST_LAUNCH_KEY
 import androidx.compose.runtime.Immutable
 import com.google.maps.android.clustering.ClusterManager
 import com.google.maps.android.clustering.algo.NonHierarchicalDistanceBasedAlgorithm
@@ -66,8 +64,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
 import androidx.core.content.ContextCompat
+import androidx.datastore.preferences.core.edit
 import com.google.maps.android.compose.MapProperties
 import com.google.maps.android.compose.MapUiSettings
+import kotlinx.coroutines.flow.map
+import ro.unitbv.wheresmybus.data.settingsDataStore
+import kotlin.time.Duration.Companion.seconds
 
 @Immutable
 data class BusStop(
@@ -111,7 +113,6 @@ data class BusRoute(
 @Composable
 fun MainScreen(navController: NavController) {
     val context = LocalContext.current
-    val userManager = remember { UserManager(context) }
     val coroutineScope = rememberCoroutineScope()
 
     val brasov = LatLng(45.657974, 25.601198)
@@ -129,7 +130,10 @@ fun MainScreen(navController: NavController) {
     var busRoutes by remember { mutableStateOf<List<BusRoute>>(emptyList()) }
 
     val currentUser = Firebase.auth.currentUser
-    var selectedStop by remember { mutableStateOf<BusStop?>(null) }
+    var selectedStopId by remember { mutableStateOf<Long?>(null) }
+    val selectedStop by remember(selectedStopId, busStops) {
+        derivedStateOf { busStops.find { it.id == selectedStopId } }
+    }
     val favoriteDao = remember { DatabaseProvider.getDatabase(context).favoriteDao() }
     val favoriteStops by
     favoriteDao.getFavoritesFlow(currentUser?.uid ?: "").collectAsState(initial = emptyList())
@@ -151,6 +155,17 @@ fun MainScreen(navController: NavController) {
     val favoriteToSelect by savedStateHandle?.getStateFlow<String?>("selected_favorite", null)
         ?.collectAsState() ?: remember { mutableStateOf(null) }
 
+    var showWelcomeDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        context.settingsDataStore.data.map { it[FIRST_LAUNCH_KEY] ?: true }.collect { isFirst ->
+            if (isFirst) {
+                showWelcomeDialog = true
+                context.settingsDataStore.edit { it[FIRST_LAUNCH_KEY] = false }
+            }
+        }
+    }
+
     LaunchedEffect(Unit) {
         val permissionCheckResult = ContextCompat.checkSelfPermission(
             context,
@@ -167,7 +182,7 @@ fun MainScreen(navController: NavController) {
         if (favoriteToSelect != null && busStops.isNotEmpty()) {
             val stop = busStops.find { it.name == favoriteToSelect }
             if (stop != null) {
-                selectedStop = stop
+                selectedStopId = stop.id
                 cameraPositionState.animate(
                     CameraUpdateFactory.newLatLngZoom(stop.location, 16f), 1000
                 )
@@ -195,7 +210,7 @@ fun MainScreen(navController: NavController) {
                     scheduleResponse = "Schedule unavaiable"
                     isUrgent = false
                 }
-                kotlinx.coroutines.delay(30000)
+                kotlinx.coroutines.delay(30.seconds)
             }
         } else {
             scheduleResponse = "Loading..."
@@ -272,41 +287,36 @@ fun MainScreen(navController: NavController) {
         }
     }
 
-    val activeRoutes by remember {
+    val activeRoutes by remember(searchQuery, selectedFilter) {
         derivedStateOf {
-            val rawQuery = searchQuery.trim()
-            val query = rawQuery.removeDiacritics()
-            if (query.isBlank()) {
+            val query = searchQuery.trim().removeDiacritics()
+            if (query.isBlank() || selectedFilter == "Stops") {
                 emptyList()
             } else {
-                if (selectedFilter == "Stops") {
-                    emptyList()
-                } else {
-                    busRoutes.filter { it.lineName.removeDiacritics().equals(query, ignoreCase = true) }
-                }
+                busRoutes.filter { it.lineName.equals(query, ignoreCase = true) }
             }
         }
     }
 
-    val filteredStops by remember {
+    val filteredStops by remember(searchQuery, selectedFilter, activeRoutes) {
         derivedStateOf {
-            val rawQuery = searchQuery.trim()
-            val query = rawQuery.removeDiacritics()
+            val query = searchQuery.trim().removeDiacritics()
             if (query.isBlank()) {
                 busStops
             } else {
-                if (selectedFilter == "Lines") {
-                    activeRoutes.flatMap { it.stops }.toSet().toList()
-                } else {
-                    val routeStops = activeRoutes.flatMap { it.stops }.toSet()
-                    busStops.filter { stop ->
-                        val matchesName = stop.name.removeDiacritics().contains(query, ignoreCase = true)
-                        val matchesLine = stop.lines.any { it.removeDiacritics().equals(query, ignoreCase = true) }
-
-                        if (selectedFilter == "Stops") {
-                            matchesName || matchesLine
-                        } else {
-                            matchesName || matchesLine || routeStops.contains(stop)
+                when (selectedFilter) {
+                    "Lines" -> {
+                        activeRoutes.flatMap { it.stops }.distinctBy { it.id }
+                    }
+                    "Stops" -> {
+                        busStops.filter { it.name.removeDiacritics().contains(query, ignoreCase = true) }
+                    }
+                    else -> {
+                        val routeStops = activeRoutes.flatMap { it.stops }.toSet()
+                        busStops.filter { stop ->
+                            stop.name.removeDiacritics().contains(query, ignoreCase = true) ||
+                                    stop.lines.any { it.removeDiacritics().contains(query, ignoreCase = true) } ||
+                                    routeStops.contains(stop)
                         }
                     }
                 }
@@ -331,22 +341,6 @@ fun MainScreen(navController: NavController) {
                             contentDescription = "Profile"
                         )
                     }
-//                    IconButton(
-//                        onClick = {
-//                            coroutineScope.launch {
-//                                userManager.setLoggedIn(false)
-//                                Firebase.auth.signOut()
-//                                navController.navigate(Screen.Guest.route) {
-//                                    popUpTo(Screen.Main.route) { inclusive = true }
-//                                }
-//                            }
-//                        }
-//                    ) {
-//                        Icon(
-//                            imageVector = Icons.AutoMirrored.Filled.ExitToApp,
-//                            contentDescription = "Logout"
-//                        )
-//                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -360,6 +354,19 @@ fun MainScreen(navController: NavController) {
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            if(showWelcomeDialog){
+                AlertDialog(
+                    onDismissRequest = { showWelcomeDialog = false },
+                    title = { Text("Welcome!") },
+                    text = { Text("Begin by searching a line or stop in Brasov.") },
+                    confirmButton = {
+                        TextButton(onClick = { showWelcomeDialog = false }) {
+                            Text("OK")
+                        }
+                    }
+                )
+            }
+
             var clusterManager by remember { mutableStateOf<ClusterManager<BusStop>?>(null) }
 
             GoogleMap(
@@ -379,14 +386,14 @@ fun MainScreen(navController: NavController) {
                         renderer.setAnimation(false)
                         manager.renderer = renderer
                         manager.setOnClusterItemClickListener { stop ->
-                            selectedStop = stop
+                            selectedStopId = stop.id
                             false
                         }
                         manager.setOnClusterClickListener {
                             false
                         }
                         map.setOnMapClickListener {
-                            selectedStop = null
+                            selectedStopId = null
                         }
                         map.setOnCameraIdleListener(manager)
                         map.setOnMarkerClickListener(manager)
@@ -474,7 +481,7 @@ fun MainScreen(navController: NavController) {
             }
 
             val fabBottomPadding by animateDpAsState(
-                targetValue = if (selectedStop != null) 300.dp else 16.dp,
+                targetValue = if (selectedStop != null) 240.dp else 16.dp,
                 label = "fabAnimation"
             )
             FloatingActionButton(
@@ -573,7 +580,7 @@ fun MainScreen(navController: NavController) {
                             )
                         }
 
-                        IconButton(onClick = { selectedStop = null }) {
+                        IconButton(onClick = { selectedStopId = null }) {
                             Icon(imageVector = Icons.Default.Close, contentDescription = "Close")
                         }
                     }
@@ -796,8 +803,8 @@ suspend fun loadRoutesFromJson(
                                 routeStops.add(stop)
                             } else {
                                 for ((nodeLat, nodeLon) in stopNodeCoords) {
-                                    val dLat = Math.abs(nodeLat - stop.location.latitude)
-                                    val dLon = Math.abs(nodeLon - stop.location.longitude)
+                                    val dLat = kotlin.math.abs(nodeLat - stop.location.latitude)
+                                    val dLon = kotlin.math.abs(nodeLon - stop.location.longitude)
                                     if(dLat < 0.0003 && dLon < 0.0003){
                                         routeStops.add(stop)
                                         break

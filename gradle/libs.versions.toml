@@ -22,11 +22,11 @@ roomVersion = "2.8.4"
 retrofit = "2.11.0"
 moshi = "1.15.1"
 
+
 [libraries]
 maps-compose-utils = { group = "com.google.maps.android", name = "maps-compose-utils", version.ref = "mapsCompose"}
 firebase-auth = { group = "com.google.firebase", name = "firebase-auth", version.ref="firebase-auth" }
 play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "play-services-auth" }
-androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences",  version.ref = "datastore-preferences"}
 androidx-compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended", version.ref = "materialIconsExtended" }
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref= "navigationCompose"}
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -51,6 +51,7 @@ room-compiler = { group = "androidx.room", name = "room-compiler", version.ref =
 retrofit = { module = "com.squareup.retrofit2:retrofit", version.ref = "retrofit" }
 converter-moshi = { module = "com.squareup.retrofit2:converter-moshi", version.ref = "retrofit" }
 moshi-kotlin = { module = "com.squareup.moshi:moshi-kotlin", version.ref = "moshi" }
+androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore-preferences" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

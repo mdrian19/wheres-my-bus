@@ -1,5 +1,6 @@
 package ro.unitbv.wheresmybus.screens
 
+import android.widget.Switch
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
@@ -21,13 +22,25 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
+import androidx.datastore.preferences.core.edit
+import ro.unitbv.wheresmybus.data.settingsDataStore
+import ro.unitbv.wheresmybus.data.DARK_MODE_KEY
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.ui.semantics.Role.Companion.Switch
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(navController: NavController){
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val auth = Firebase.auth
     val user = auth.currentUser
+    val isDark by remember(context) {
+        context.settingsDataStore.data.map { it[DARK_MODE_KEY] ?: false }
+    }.collectAsState(initial = false)
 
     var newPassword by remember {mutableStateOf("")}
     var isLoading by remember { mutableStateOf(false)}
@@ -187,6 +200,24 @@ fun ProfileScreen(navController: NavController){
             ) {
                 if (isLoading) CircularProgressIndicator(modifier = Modifier.size(20.dp))
                 else Text("Update Password")
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Dark Mode", style = MaterialTheme.typography.bodyLarge)
+                Switch(
+                    checked = isDark,
+                    onCheckedChange = { checked ->
+                        scope.launch {
+                            context.settingsDataStore.edit { it[DARK_MODE_KEY] = checked }
+                        }
+                    }
+                )
             }
 
             Spacer(modifier = Modifier.weight(1f))
