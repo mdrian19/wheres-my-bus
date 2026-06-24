@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -299,7 +300,7 @@ fun MainScreen(navController: NavController) {
                 } else {
                     val routeStops = activeRoutes.flatMap { it.stops }.toSet()
                     busStops.filter { stop ->
-                        val matchesName = stop.name.removeDiacritics().equals(query, ignoreCase = true)
+                        val matchesName = stop.name.removeDiacritics().contains(query, ignoreCase = true)
                         val matchesLine = stop.lines.any { it.removeDiacritics().equals(query, ignoreCase = true) }
 
                         if (selectedFilter == "Stops") {
@@ -324,22 +325,28 @@ fun MainScreen(navController: NavController) {
                             contentDescription = "Go to Favorites"
                         )
                     }
-                    IconButton(
-                        onClick = {
-                            coroutineScope.launch {
-                                userManager.setLoggedIn(false)
-                                Firebase.auth.signOut()
-                                navController.navigate(Screen.Guest.route) {
-                                    popUpTo(Screen.Main.route) { inclusive = true }
-                                }
-                            }
-                        }
-                    ) {
+                    IconButton(onClick = { navController.navigate(Screen.Profile.route) }) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ExitToApp,
-                            contentDescription = "Logout"
+                            imageVector = Icons.Default.Person,
+                            contentDescription = "Profile"
                         )
                     }
+//                    IconButton(
+//                        onClick = {
+//                            coroutineScope.launch {
+//                                userManager.setLoggedIn(false)
+//                                Firebase.auth.signOut()
+//                                navController.navigate(Screen.Guest.route) {
+//                                    popUpTo(Screen.Main.route) { inclusive = true }
+//                                }
+//                            }
+//                        }
+//                    ) {
+//                        Icon(
+//                            imageVector = Icons.AutoMirrored.Filled.ExitToApp,
+//                            contentDescription = "Logout"
+//                        )
+//                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -467,7 +474,7 @@ fun MainScreen(navController: NavController) {
             }
 
             val fabBottomPadding by animateDpAsState(
-                targetValue = if (selectedStop != null) 150.dp else 16.dp,
+                targetValue = if (selectedStop != null) 300.dp else 16.dp,
                 label = "fabAnimation"
             )
             FloatingActionButton(

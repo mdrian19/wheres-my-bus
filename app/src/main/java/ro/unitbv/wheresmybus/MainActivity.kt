@@ -32,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import ro.unitbv.wheresmybus.screens.AlertsScreen
 import ro.unitbv.wheresmybus.screens.FavoritesScreen
+import ro.unitbv.wheresmybus.screens.ProfileScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -85,6 +86,9 @@ fun AppNavigation(){
                 AlertsScreen(
                     onBackClick = { navController.popBackStack() }
                 )
+            }
+            composable(Screen.Profile.route){
+                ProfileScreen(navController = navController)
             }
         }
     }
