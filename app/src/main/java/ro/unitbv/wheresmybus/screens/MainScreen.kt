@@ -63,6 +63,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.getValue
 import androidx.core.content.ContextCompat
 import com.google.maps.android.compose.MapProperties
 import com.google.maps.android.compose.MapUiSettings
@@ -205,59 +206,42 @@ fun MainScreen(navController: NavController) {
             .get(Source.SERVER)
             .addOnSuccessListener { result ->
                 coroutineScope.launch(Dispatchers.IO) {
-                    val finalStops = if (result.isEmpty) {
+                    val fetchedStops = if (result.isEmpty) {
                         Log.d("FirebaseInit", "Database is empty. Starting seeding...")
                         seedDatabaseFromJson(context, "stops.json")
                     } else {
-                        val fetchedStops = mutableListOf<BusStop>()
-                        for (document in result) {
-                            val id = document.getLong("id") ?: 0L
-                            val name = document.getString("name") ?: "Unknown"
-                            val lat = document.getDouble("lat") ?: 0.0
-                            val lng = document.getDouble("lng") ?: 0.0
-                            val lines = document.get("lines") as? List<String> ?: emptyList()
-                            val hasBench = document.getBoolean("hasBench") ?: false
-                            val hasShelter = document.getBoolean("hasShelter") ?: false
-                            val hasRealTimeBoard = document.getBoolean("hasRealTimeBoard") ?: false
-                            val wheelchairAccess =
-                                document.getString("wheelchairAccess") ?: "unknown"
-                            val operator = document.getString("operator") ?: "RAT Brașov"
-                            fetchedStops.add(
-                                BusStop(
-                                    id = id,
-                                    name = name,
-                                    location = LatLng(lat, lng),
-                                    lines = lines,
-                                    hasBench = hasBench,
-                                    hasShelter = hasShelter,
-                                    hasRealTimeBoard = hasRealTimeBoard,
-                                    wheelchairAccess = wheelchairAccess,
-                                    operator = operator
-                                )
+                        result.map { document ->
+                            BusStop(
+                                id = document.getLong("id") ?: 0L,
+                                name = document.getString("name") ?: "Unknown",
+                                location = LatLng(document.getDouble("lat") ?: 0.0, document.getDouble("lng") ?: 0.0),
+                                lines = (document.get("lines") as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList(),
+                                hasBench = document.getBoolean("hasBench") ?: false,
+                                hasShelter = document.getBoolean("hasShelter") ?: false,
+                                hasRealTimeBoard = document.getBoolean("hasRealTimeBoard") ?: false,
+                                wheelchairAccess = document.getString("wheelchairAccess") ?: "unknown",
+                                operator = document.getString("operator") ?: "RAT Brașov"
                             )
                         }
-                        fetchedStops
+                    }
+
+                    val loadedRoutes = loadRoutesFromJson(context, "lines.json", fetchedStops)
+
+                    val updatedStops = fetchedStops.map { stop ->
+                        val linesPassingStop = loadedRoutes
+                            .filter { route -> route.stops.any { it.id == stop.id } }
+                            .map { it.lineName }
+                        val allLinesForStop = (stop.lines + linesPassingStop).distinct().sorted()
+                        stop.copy(lines = allLinesForStop)
                     }
 
                     withContext(Dispatchers.Main) {
-                        busStops = finalStops.toList()
-                    }
-
-                    val loadedRoutes = loadRoutesFromJson(context, "lines.json", finalStops)
-
-                    withContext(Dispatchers.Main) {
-                        busRoutes = loadedRoutes.toList()
-
-                        busStops = finalStops.map { stop ->
-                            val linesPassingHere = loadedRoutes
-                                .filter { route -> route.stops.any { it.id == stop.id } }
-                                .map { it.lineName }
-
-                            val allLinesForStop =
-                                (stop.lines + linesPassingHere).distinct().sorted()
-                            stop.copy(lines = allLinesForStop)
+                        busStops = updatedStops
+                        busRoutes = loadedRoutes.map { route ->
+                            route.copy(stops = route.stops.mapNotNull { oldStop ->
+                                updatedStops.find { it.id == oldStop.id }
+                            })
                         }
-
                         Log.d("Routes", "Loaded ${busRoutes.size} routes.")
                     }
                 }
@@ -297,7 +281,7 @@ fun MainScreen(navController: NavController) {
                 if (selectedFilter == "Stops") {
                     emptyList()
                 } else {
-                    busRoutes.filter { it.lineName.removeDiacritics().contains(query, ignoreCase = true) }
+                    busRoutes.filter { it.lineName.removeDiacritics().equals(query, ignoreCase = true) }
                 }
             }
         }
@@ -315,11 +299,11 @@ fun MainScreen(navController: NavController) {
                 } else {
                     val routeStops = activeRoutes.flatMap { it.stops }.toSet()
                     busStops.filter { stop ->
-                        val matchesName = stop.name.removeDiacritics().contains(query, ignoreCase = true)
+                        val matchesName = stop.name.removeDiacritics().equals(query, ignoreCase = true)
                         val matchesLine = stop.lines.any { it.removeDiacritics().equals(query, ignoreCase = true) }
 
                         if (selectedFilter == "Stops") {
-                            matchesName
+                            matchesName || matchesLine
                         } else {
                             matchesName || matchesLine || routeStops.contains(stop)
                         }
@@ -505,6 +489,10 @@ fun MainScreen(navController: NavController) {
                 val stop = selectedStop!!
                 val isFavorite = favoriteStops.contains(stop.name)
 
+                val currentStopInfo = remember(stop, busStops) {
+                    busStops.find { it.id == stop.id } ?: stop
+                }
+
                 Card(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -521,14 +509,14 @@ fun MainScreen(navController: NavController) {
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(text = stop.name, style = MaterialTheme.typography.titleLarge)
+                            Text(text = currentStopInfo.name, style = MaterialTheme.typography.titleLarge)
                             Text(
-                                text = "Lines: ${stop.lines.joinToString(", ")}",
+                                text = "Lines: ${currentStopInfo.lines.joinToString(", ")}",
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             val extraInfo = mutableListOf<String>()
-                            if (stop.hasBench) extraInfo.add("Bench")
-                            if (stop.hasShelter) extraInfo.add("Shelter")
+                            if (currentStopInfo.hasBench) extraInfo.add("Bench")
+                            if (currentStopInfo.hasShelter) extraInfo.add("Shelter")
                             if (extraInfo.isNotEmpty()) {
                                 Text(
                                     text = extraInfo.joinToString(" - "),
@@ -691,19 +679,6 @@ suspend fun loadRoutesFromJson(
         val jsonString = context.assets.open(filename).bufferedReader().use { it.readText() }
         val rootObject = JSONObject(jsonString)
         val elementsArray = rootObject.optJSONArray("elements") ?: return@withContext emptyList()
-        val stopsMap = availableStops.associateBy { it.id }
-
-        val allNodes = mutableMapOf<Long, LatLng>()
-        for (i in 0 until elementsArray.length()) {
-            val elem = elementsArray.getJSONObject(i)
-            if (elem.optString("type") == "node") {
-                val lat = elem.optDouble("lat")
-                val lon = elem.optDouble("lon")
-                if (!lat.isNaN() && !lon.isNaN()) {
-                    allNodes[elem.optLong("id")] = LatLng(lat, lon)
-                }
-            }
-        }
 
         val allWays = mutableMapOf<Long, List<LatLng>>()
         for (i in 0 until elementsArray.length()) {
@@ -711,46 +686,32 @@ suspend fun loadRoutesFromJson(
             if (elem.optString("type") == "way") {
                 val wayId = elem.optLong("id")
                 val wayPoints = mutableListOf<LatLng>()
-
                 val geometry = elem.optJSONArray("geometry")
                 if (geometry != null) {
                     for (k in 0 until geometry.length()) {
                         val geoPoint = geometry.getJSONObject(k)
-                        val lat = geoPoint.optDouble("lat")
-                        val lon = geoPoint.optDouble("lon")
-                        if (!lat.isNaN() && !lon.isNaN())
-                            wayPoints.add(LatLng(lat, lon))
-                    }
-                } else {
-                    val nodes = elem.optJSONArray("nodes")
-                    if (nodes != null) {
-                        for (k in 0 until nodes.length()) {
-                            val nodeId = nodes.optLong(k)
-                            allNodes[nodeId]?.let { wayPoints.add(it) }
-                        }
+                        val lat = geoPoint.optDouble("lat", Double.NaN)
+                        val lon = geoPoint.optDouble("lon", Double.NaN)
+                        if (!lat.isNaN() && !lon.isNaN()) wayPoints.add(LatLng(lat, lon))
                     }
                 }
                 allWays[wayId] = wayPoints
             }
         }
+
         for (i in 0 until elementsArray.length()) {
             val relation = elementsArray.getJSONObject(i)
 
             if (relation.optString("type") == "relation") {
                 val tags = relation.optJSONObject("tags")
+                if (tags != null && tags.optString("type") == "route" &&
+                    (tags.optString("route") == "bus" || tags.optString("route") == "trolleybus")) {
 
-                if (tags != null && tags.optString("type") == "route" && (tags.optString("route") == "bus" || tags.optString(
-                        "route"
-                    ) == "trolleybus")
-                ) {
                     val lineName = tags.optString("ref", "Unknown")
-
                     val hexColor = tags.optString("colour", "#9C27B0")
                     val routeColor = try {
                         Color(parseColor(if (!hexColor.startsWith("#")) "#$hexColor" else hexColor))
-                    } catch (e: Exception) {
-                        Color(0xFF9C27B0)
-                    }
+                    } catch (e: Exception) { Color(0xFF9C27B0) }
 
                     val membersArray = relation.optJSONArray("members")
                     val routePoints = mutableListOf<LatLng>()
@@ -770,14 +731,9 @@ suspend fun loadRoutesFromJson(
                                 if (geometry != null) {
                                     for (k in 0 until geometry.length()) {
                                         val geoPoint = geometry.getJSONObject(k)
-                                        val lat = geoPoint.optDouble("lat")
-                                        val lon = geoPoint.optDouble("lon")
-                                        if (!lat.isNaN() && !lon.isNaN()) wayPoints.add(
-                                            LatLng(
-                                                lat,
-                                                lon
-                                            )
-                                        )
+                                        val lat = geoPoint.optDouble("lat", Double.NaN)
+                                        val lon = geoPoint.optDouble("lon", Double.NaN)
+                                        if (!lat.isNaN() && !lon.isNaN()) wayPoints.add(LatLng(lat, lon))
                                     }
                                 }
 
@@ -789,19 +745,13 @@ suspend fun loadRoutesFromJson(
                                         val firstWayPoint = wayPoints.first()
                                         val lastWayPoint = wayPoints.last()
 
-                                        val dLatFirst =
-                                            lastDrawnPoint.latitude - firstWayPoint.latitude
-                                        val dLonFirst =
-                                            lastDrawnPoint.longitude - firstWayPoint.longitude
-                                        val distToFirst =
-                                            (dLatFirst * dLatFirst) + (dLonFirst * dLonFirst)
+                                        val dLatFirst = lastDrawnPoint.latitude - firstWayPoint.latitude
+                                        val dLonFirst = lastDrawnPoint.longitude - firstWayPoint.longitude
+                                        val distToFirst = (dLatFirst * dLatFirst) + (dLonFirst * dLonFirst)
 
-                                        val dLatLast =
-                                            lastDrawnPoint.latitude - lastWayPoint.latitude
-                                        val dLonLast =
-                                            lastDrawnPoint.longitude - lastWayPoint.longitude
-                                        val distToLast =
-                                            (dLatLast * dLatLast) + (dLonLast * dLonLast)
+                                        val dLatLast = lastDrawnPoint.latitude - lastWayPoint.latitude
+                                        val dLonLast = lastDrawnPoint.longitude - lastWayPoint.longitude
+                                        val distToLast = (dLatLast * dLatLast) + (dLonLast * dLonLast)
 
                                         if (distToLast < distToFirst) {
                                             routePoints.addAll(wayPoints.reversed())
@@ -810,59 +760,45 @@ suspend fun loadRoutesFromJson(
                                         }
                                     }
                                 }
-                            } else if (type == "node") {
-                                if (refId != -1L) {
-                                    val foundStop = stopsMap[refId]
-                                    if (foundStop != null) {
-                                        routeStops.add(foundStop)
-                                    }
-                                }
                             }
                         }
                     }
 
-                    if (routePoints.size > 1) {
-                        var minLat = 90.0
-                        var maxLat = -90.0
-                        var minLon = 180.0
-                        var maxLon = -180.0
-                        for (p in routePoints) {
-                            if (p.latitude < minLat) minLat = p.latitude
-                            if (p.latitude > maxLat) maxLat = p.latitude
-                            if (p.longitude < minLon) minLon = p.longitude
-                            if (p.longitude > maxLon) maxLon = p.longitude
-                        }
+                    if (routePoints.isNotEmpty()) {
+                        val stopNodeRefs = mutableSetOf<Long>()
+                        val stopNodeCoords = mutableListOf<Pair<Double, Double>>()
 
-                        for (stop in availableStops) {
-                            val sLat = stop.location.latitude
-                            val sLon = stop.location.longitude
-
-                            if (sLat < minLat - 0.0005 || sLat > maxLat + 0.0005 ||
-                                sLon < minLon - 0.0005 || sLon > maxLon + 0.0005
-                            ) {
-                                continue
-                            }
-
-                            for (pt in routePoints) {
-                                val dLat =
-                                    if (pt.latitude > sLat) pt.latitude - sLat else sLat - pt.latitude
-                                val dLon =
-                                    if (pt.longitude > sLon) pt.longitude - sLon else sLon - pt.longitude
-
-                                if (dLat < 0.0003 && dLon < 0.0003) {
-                                    routeStops.add(stop)
-                                    break
+                        if(membersArray != null) {
+                            for(j in 0 until membersArray.length()){
+                                val member = membersArray.getJSONObject(j)
+                                if(member.optString("type") == "node") {
+                                    val role = member.optString("role")
+                                    if(role == "stop" || role == "platform" || role == "stop_entry_only" || role == "stop_exit_only") {
+                                        stopNodeRefs.add(member.optLong("ref", -1L))
+                                        val lat = member.optDouble("lat", Double.NaN)
+                                        val lon = member.optDouble("lon", Double.NaN)
+                                        if(!lat.isNaN() && !lon.isNaN()) {
+                                            stopNodeCoords.add(Pair(lat, lon))
+                                        }
+                                    }
                                 }
                             }
                         }
-                        loadedRoutes.add(
-                            BusRoute(
-                                lineName = lineName,
-                                color = routeColor,
-                                points = routePoints,
-                                stops = routeStops.toList()
-                            )
-                        )
+                        for (stop in availableStops) {
+                            if(stop.id in stopNodeRefs) {
+                                routeStops.add(stop)
+                            } else {
+                                for ((nodeLat, nodeLon) in stopNodeCoords) {
+                                    val dLat = Math.abs(nodeLat - stop.location.latitude)
+                                    val dLon = Math.abs(nodeLon - stop.location.longitude)
+                                    if(dLat < 0.0003 && dLon < 0.0003){
+                                        routeStops.add(stop)
+                                        break
+                                    }
+                                }
+                            }
+                        }
+                        loadedRoutes.add(BusRoute(lineName, routeColor, routePoints, routeStops.toList()))
                     }
                 }
             }
