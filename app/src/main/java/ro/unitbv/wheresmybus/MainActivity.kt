@@ -30,6 +30,7 @@ import ro.unitbv.wheresmybus.ui.theme.WheresMyBusTheme
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import ro.unitbv.wheresmybus.screens.AlertsScreen
 import ro.unitbv.wheresmybus.screens.FavoritesScreen
 
 class MainActivity : ComponentActivity() {
@@ -55,8 +56,6 @@ fun AppNavigation(){
     val userManager = remember { UserManager(context) }
     val isLoggedInState by userManager.isLoggedInFlow.collectAsState(initial = null)
     val isLoggedIn = isLoggedInState
-//    val savedEmail by userManager.userEmailFlow.collectAsState(initial = null)
-//    val currentEmail = savedEmail
 
     if(isLoggedIn == null){
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center){
@@ -81,6 +80,11 @@ fun AppNavigation(){
             }
             composable(Screen.Favorites.route) {
                 FavoritesScreen(navController = navController)
+            }
+            composable(Screen.Alerts.route){
+                AlertsScreen(
+                    onBackClick = { navController.popBackStack() }
+                )
             }
         }
     }

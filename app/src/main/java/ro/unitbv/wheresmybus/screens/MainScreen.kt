@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.filled.BusAlert
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
@@ -55,7 +56,7 @@ import com.google.maps.android.compose.MapEffect
 import com.google.maps.android.compose.Polyline
 import androidx.compose.runtime.collectAsState
 import ro.unitbv.wheresmybus.network.RetrofitClient
-import ro.unitbv.wheresmybus.network.UserData
+import androidx.compose.animation.core.animateDpAsState
 
 @Immutable
 data class BusStop(
@@ -132,13 +133,14 @@ fun MainScreen(navController: NavController) {
                         isUrgent = fastestBus.eta <= 2
                         scheduleResponse = "Line ${fastestBus.line}: ${fastestBus.eta} min"
                     } else {
-                        scheduleResponse = "No available buses."
+                        scheduleResponse = "No available buses"
                     }
                 } catch (e: Exception) {
-                    scheduleResponse = "Schedule unavailable."
+                    Log.e("API_ERROR", "Error on parsing: ", e)
+                    scheduleResponse = "Schedule unavaiable"
                     isUrgent = false
                 }
-                kotlinx.coroutines.delay(5000)
+                kotlinx.coroutines.delay(30000)
             }
         } else {
             scheduleResponse = "Loading..."
@@ -386,6 +388,23 @@ fun MainScreen(navController: NavController) {
                     imeAction = ImeAction.Go
                 )
             )
+
+            val fabBottomPadding by animateDpAsState(
+                targetValue = if (selectedStop != null) 150.dp else 16.dp,
+                label = "fabAnimation"
+            )
+            FloatingActionButton(
+                onClick = {
+                    navController.navigate(Screen.Alerts.route)
+                },
+                modifier = Modifier.align(Alignment.BottomStart).padding(start = 16.dp, bottom = fabBottomPadding),
+                containerColor = MaterialTheme.colorScheme.errorContainer
+            ){
+                Icon(
+                    imageVector = Icons.Default.BusAlert,
+                    contentDescription = "Traffic Alerts"
+                )
+            }
 
             if (selectedStop != null) {
                 val stop = selectedStop!!
